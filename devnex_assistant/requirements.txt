@@ -1,0 +1,15 @@
+# Core
+pydantic>=2.0.0
+requests>=2.31.0
+click>=8.1.7
+pyyaml>=6.0
+
+# GUI
+PyQt6>=6.6.0
+
+# Icon / asset generation
+pillow>=10.0.0
+
+# Dev / test
+pytest>=8.0.0
+pytest-qt>=4.4.0

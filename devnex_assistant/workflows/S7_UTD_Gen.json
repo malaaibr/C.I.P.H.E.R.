@@ -1,0 +1,21 @@
+{
+  "id": "S7_UTD_Gen",
+  "stage": "S7",
+  "name": "Unit Test Documentation Generation",
+  "description": "Parse .TST execution results and generate formal Unit Test Documentation (UTD).",
+  "nodes": [
+    {
+      "id": "S7N1",
+      "label": "Parse .TST Files & Generate UTD",
+      "type": "gca_invoke",
+      "human_review": false,
+      "inputs": {
+        "files": ["workspace/*.tst"]
+      },
+      "outputs": {
+        "artifact": "{{SWC_name}}_UTD.md"
+      },
+      "depends_on": ["S6N1"]
+    }
+  ]
+}

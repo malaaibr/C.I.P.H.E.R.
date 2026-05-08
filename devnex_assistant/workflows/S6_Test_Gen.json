@@ -1,0 +1,25 @@
+{
+  "id": "S6_Test_Gen",
+  "stage": "S6",
+  "name": "Unit Test AI Tool",
+  "description": "Generate VectorCAST/Tessy test artifacts and wait for .TST output files.",
+  "nodes": [
+    {
+      "id": "S6N1",
+      "label": "Prepare Test Artifacts (VectorCAST/Tessy)",
+      "type": "gca_invoke_then_review",
+      "human_review": true,
+      "inputs": {
+        "files": [
+          "artifacts/updated_{{SWC_name}}.c",
+          "artifacts/{{SWC_name}}_FUNC_req.csv"
+        ]
+      },
+      "outputs": {
+        "artifact": "test.bat"
+      },
+      "review_message": "Run VectorCAST/Tessy using the generated 'test.bat' file.\nWaiting for .TST output files.\nClick Continue once .TST files are available in the workspace.",
+      "depends_on": ["S5N1"]
+    }
+  ]
+}
