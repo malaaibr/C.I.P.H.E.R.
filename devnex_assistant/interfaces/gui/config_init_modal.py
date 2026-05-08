@@ -35,7 +35,7 @@ _FIELDS = [
     ("SWC_name_TEMP_LLD",   "Component LLD Template *",    "DLT_TEMP_LLD.csv",    True,  True),
     ("SWC_nameInspBaseLLD", "Inspection Base LLD *",       "DLTInspBaseLLD.csv",  True,  True),
     ("SWC_name_HLD",        "HLD Document *",              "DLT_HLD.csv",         True,  True),
-    ("Linker File",         "Linker Script (.lds) *",      "Linkerscript",        True,  True),
+    ("lds_file",            "Linker File *",               "Linkerscript",        True,  True),
     ("map_file",            "Map File (.map) *",           "map File",            True,  True),
     ("SWC_name_FUNC_req",   "Functional Requirements",     "DLT_FUNC_req.csv",    True,  False),
     ("workspace_path",      "Workspace Path",              ".",                   False, False),

@@ -27,7 +27,7 @@ class TestDevNexOrchestrator(unittest.TestCase):
             "SWC_name_FUNC_req": "DLT_FUNC_req.csv",
             "SWC_nameInspBaseLLD": "DLTInspBaseLLD.csv",
             "SWC_name_HLD": "DLT_HLD.csv",
-            "Linker File": "Linkerscript",
+            "lds_file": "Linkerscript",
             "map_file": "map File",
             "workspace_path": str(self.run_dir),
         }

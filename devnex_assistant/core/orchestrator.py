@@ -10,17 +10,41 @@ from dataclasses import dataclass, field
 from core.console_logging import format_console_log, utc_timestamp
 from core.errors import (
     WorkflowAbortedError, NodeExecutionError,
-    ArtifactMissingError, ConfigValidationError,
+    ConfigValidationError,
 )
 from core.run_context import DevNexRunContext
 from persistence.state_store import StateStore
 from persistence.config_store import ConfigStore
 
 MODULE_NAME = "DevNexOrchestrator"
+LLD_INPUT_FILE_KEYS = [
+    "SWC_name_C",
+    "SWC_name_H",
+    "G_SWDD_TEMP",
+    "SWC_name_TEMP_LLD",
+    "SWC_name_HLD",
+    "lds_file",
+    "map_file",
+]
+LLD_EMBEDDED_CONTEXT_KEYS = [
+    "SWC_name_C",
+    "SWC_name_H",
+    "G_SWDD_TEMP",
+    "SWC_name_TEMP_LLD",
+    "SWC_name_HLD",
+]
 
 
 @dataclass
 class NodeResult:
+    """
+    @brief Result contract returned by each V-cycle node.
+
+    @details
+    UI workers, CLI commands, and tests consume this object to inspect node
+    status, raw output, generated artifacts, and non-fatal errors.
+    """
+
     node_id:   str
     status:    str
     output:    str
@@ -64,6 +88,16 @@ class DevNexOrchestrator:
         on_human_review:    Callable[[str, str], bool] | None = None,
         progress_callback:  Callable[[int, str], None] | None = None,
     ) -> None:
+        """
+        @brief Initialize stores, callbacks, and run artifact directory.
+
+        @param run_context Run metadata and artifact root for this workflow run.
+        @param on_log Optional callback for log messages.
+        @param on_node_started Optional callback invoked before node execution.
+        @param on_node_complete Optional callback invoked after node execution.
+        @param on_human_review Optional callback used by human-review gates.
+        @param progress_callback Optional callback used by full-run progress.
+        """
         self.run_context       = run_context
         self.on_log            = on_log or (lambda *_: None)
         self.on_node_started   = on_node_started or (lambda _: None)
@@ -84,6 +118,11 @@ class DevNexOrchestrator:
 
     @property
     def gca_invoker(self):
+        """
+        @brief Lazily construct the GCA invoker for the configured workspace.
+
+        @return `DevNexGCAInvoker` instance reused by subsequent node calls.
+        """
         if self._gca_invoker is None:
             from gca.vscode_invoker import DevNexGCAInvoker
             self._gca_invoker = DevNexGCAInvoker(Path(self.config.get("workspace_path", ".")))
@@ -175,23 +214,19 @@ class DevNexOrchestrator:
         """@brief S1N1 — Collect inputs, build prompt, invoke GCA, write LLD CSV."""
         self._validate_config([
             "SWC_name", "G_SWDD_TEMP", "SWC_name_C", "SWC_name_H",
-            "SWC_name_TEMP_LLD", "SWC_name_HLD", "Linker File", "map_file",
+            "SWC_name_TEMP_LLD", "SWC_name_HLD", "lds_file", "map_file",
         ])
         swc = self.config["SWC_name"]
         self._trace(f"S1N1: Building LLD generation prompt for SWC '{swc}'.")
 
         workspace = Path(self.config.get("workspace_path", "."))
 
-        def _resolve(val: str) -> Path:
-            p = Path(val)
-            return p if p.is_absolute() else (workspace / p).resolve()
-
-        # Keys whose values are file paths that must be resolved to absolute paths.
-        _FILE_KEYS = [
-            "SWC_name_C", "SWC_name_H", "G_SWDD_TEMP",
-            "SWC_name_TEMP_LLD", "SWC_name_HLD", "Linker File", "map_file",
-        ]
-        resolved: dict[str, Path] = {k: _resolve(self.config[k]) for k in _FILE_KEYS}
+        # Resolve all configured file paths once so prompt placeholders and
+        # attached-file metadata use the same canonical paths.
+        resolved: dict[str, Path] = {
+            key: self._resolve_workspace_path(self.config[key], workspace)
+            for key in LLD_INPUT_FILE_KEYS
+        }
 
         # Bug 1 fix: replace placeholders with full absolute paths so the LLM
         # receives the real file location, not just a bare filename.
@@ -206,7 +241,7 @@ class DevNexOrchestrator:
         # GeminiController has no reliable "attach file" API — content must be
         # included in the prompt text so GCA can see it in context.
         content_sections: list[str] = []
-        for k in ["SWC_name_C", "SWC_name_H", "G_SWDD_TEMP", "SWC_name_TEMP_LLD", "SWC_name_HLD"]:
+        for k in LLD_EMBEDDED_CONTEXT_KEYS:
             p = resolved[k]
             if p.exists():
                 text = p.read_text(encoding="utf-8", errors="replace")
@@ -222,7 +257,7 @@ class DevNexOrchestrator:
 
         prompt += "\n\n## Attached Input Files\n" + "".join(content_sections)
 
-        attached_files = [str(resolved[k]) for k in ["SWC_name_C", "SWC_name_H", "G_SWDD_TEMP", "SWC_name_TEMP_LLD", "SWC_name_HLD"]]
+        attached_files = [str(resolved[k]) for k in LLD_EMBEDDED_CONTEXT_KEYS]
         self._trace(f"S1N1: Invoking GCA (prompt={len(prompt)} chars, context_files={len(attached_files)}).")
         result = self.gca_invoker.invoke_prompt(prompt, attached_files)
 
@@ -504,6 +539,12 @@ class DevNexOrchestrator:
     # ── Helpers ───────────────────────────────────────────────────────────
 
     def _validate_config(self, required_keys: list[str]) -> None:
+        """
+        @brief Ensure required configuration keys are populated.
+
+        @param required_keys Internal config keys required by a node.
+        @raises ConfigValidationError When one or more required values are missing.
+        """
         missing = [k for k in required_keys if not self.config.get(k)]
         if missing:
             raise ConfigValidationError(
@@ -512,6 +553,12 @@ class DevNexOrchestrator:
             )
 
     def _load_prompt(self, filename: str) -> str:
+        """
+        @brief Load a prompt template from the package prompts directory.
+
+        @param filename Prompt template filename.
+        @return Template text, or a fallback marker when the file is missing.
+        """
         prompt_path = Path(__file__).parent.parent / "prompts" / filename
         if prompt_path.exists():
             return prompt_path.read_text(encoding="utf-8")
@@ -522,6 +569,20 @@ class DevNexOrchestrator:
         for key, value in context.items():
             template = template.replace(f"{{{{{key}}}}}", str(value))
         return template
+
+    @staticmethod
+    def _resolve_workspace_path(value: str, workspace: Path) -> Path:
+        """
+        @brief Resolve a config file path against the active workspace.
+
+        @param value Raw file path from configuration.
+        @param workspace Workspace root for relative file paths.
+        @return Absolute path when `value` is relative; original path when absolute.
+        """
+        candidate_path = Path(value)
+        if candidate_path.is_absolute():
+            return candidate_path
+        return (workspace / candidate_path).resolve()
 
     @staticmethod
     def _default_human_review(node_id: str, message: str) -> bool:

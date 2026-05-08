@@ -259,7 +259,7 @@ WorkflowEngine.execute()
 
 Input:
 
-- Config keys: `SWC_name`, `G_SWDD_TEMP`, `SWC_name_C`, `SWC_name_H`, `SWC_name_TEMP_LLD`, `SWC_name_HLD`, `Linker File`, `map_file`, `workspace_path`.
+- Config keys: `SWC_name`, `G_SWDD_TEMP`, `SWC_name_C`, `SWC_name_H`, `SWC_name_TEMP_LLD`, `SWC_name_HLD`, `lds_file`, `map_file`, `workspace_path`.
 
 Pipeline:
 

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import inspect
-from typing import List
 
 import requests
 
@@ -30,12 +29,18 @@ class DevNexBridge:
 
     @staticmethod
     def _trace(message: str, level: str = "INFO") -> None:
+        """
+        @brief Emit a structured bridge log line.
+
+        @param message Human-readable log message.
+        @param level Log level label used by the console formatter.
+        """
         frame = inspect.currentframe()
         caller = frame.f_back.f_code.co_name if frame and frame.f_back else "<unknown>"
         print(format_console_log(MODULE_NAME, level, message, utc_timestamp(), caller))
 
     @staticmethod
-    def send_prompt(prompt: str, attached_files: List[str] | None = None) -> str:
+    def send_prompt(prompt: str, attached_files: list[str] | None = None) -> str:
         """
         @brief Send a prompt to GCA via the Bridge VSIX and return llmResponse.
 
@@ -75,14 +80,18 @@ class DevNexBridge:
             raise GCABridgeError(f"GCA request timed out after {TIMEOUT_PROMPT}s.")
         except GCABridgeError:
             raise
-        except Exception as e:
-            raise GCABridgeError(f"Bridge error: {e}")
+        except Exception as exc:
+            raise GCABridgeError(f"Bridge error: {exc}") from exc
 
     @staticmethod
     def is_available() -> bool:
-        """@brief Check if the Bridge VSIX is reachable."""
+        """
+        @brief Check if the Bridge VSIX is reachable.
+
+        @return True when `/health` returns HTTP 200; otherwise False.
+        """
         try:
-            r = requests.get(f"{BRIDGE_URL}/health", timeout=TIMEOUT_HEALTH)
-            return r.status_code == 200
+            response = requests.get(f"{BRIDGE_URL}/health", timeout=TIMEOUT_HEALTH)
+            return response.status_code == 200
         except Exception:
             return False

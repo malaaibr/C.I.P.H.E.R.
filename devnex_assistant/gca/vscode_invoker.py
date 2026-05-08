@@ -19,7 +19,7 @@ import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import websocket as _ws
 
@@ -57,13 +57,13 @@ class _DirectGCAClient:
         self._ws = _ws.WebSocket()
         self._ws.connect(f"ws://localhost:{port}")
 
-    def _send(self, command: str, payload: Any = None) -> Dict[str, Any]:
-        msg = json.dumps({
+    def _send(self, command: str, payload: Any = None) -> dict[str, Any]:
+        message = json.dumps({
             "command":    command,
             "payload":    payload or {},
             "instanceId": self._instance_id,
         })
-        self._ws.send(msg)
+        self._ws.send(message)
         return json.loads(self._ws.recv())
 
     def reset_chat(self) -> None:
@@ -116,7 +116,7 @@ class _DirectGCAClient:
 
 # ── Registry helpers ───────────────────────────────────────────────────────────
 
-def _read_registry_ids() -> set:
+def _read_registry_ids() -> set[str]:
     try:
         data = json.loads(_GCA_REGISTRY.read_text(encoding="utf-8"))
         if isinstance(data, list):
@@ -148,11 +148,11 @@ def _wait_and_connect(before_ids: set, timeout: int) -> _DirectGCAClient:
             data = json.loads(_GCA_REGISTRY.read_text(encoding="utf-8"))
             if isinstance(data, list):
                 for entry in reversed(data):
-                    iid  = entry.get("instanceId", "")
+                    instance_id = entry.get("instanceId", "")
                     port = entry.get("port")
-                    if iid not in before_ids and port and _is_port_open(port):
+                    if instance_id not in before_ids and port and _is_port_open(port):
                         try:
-                            return _DirectGCAClient(port=port, instance_id=iid)
+                            return _DirectGCAClient(port=port, instance_id=instance_id)
                         except Exception:
                             pass  # port open but WS not ready yet — keep polling
         except (FileNotFoundError, json.JSONDecodeError):
@@ -208,14 +208,14 @@ class DevNexGCAInvoker:
         return Path(tempfile.mkdtemp(prefix="devnex_ws_"))
 
     def _launch_vscode(self, isolated_workspace: Path) -> bool:
-        for cmd in (
+        for command in (
             ["code", "--new-window", str(isolated_workspace)],
             ["code.cmd", "--new-window", str(isolated_workspace)],
             ["code", "-n", str(isolated_workspace)],
             ["code.cmd", "-n", str(isolated_workspace)],
         ):
             try:
-                subprocess.Popen(cmd, cwd=str(self.repo_path))
+                subprocess.Popen(command, cwd=str(self.repo_path))
                 return True
             except FileNotFoundError:
                 continue
@@ -226,7 +226,7 @@ class DevNexGCAInvoker:
     def invoke_prompt(
         self,
         prompt: str,
-        attached_files: List[str] | None = None,
+        attached_files: list[str] | None = None,
         startup_sleep_seconds: int = 0,   # kept for API compatibility; no longer used
     ) -> GCAInvocationResult:
         """
@@ -276,7 +276,7 @@ class DevNexGCAInvoker:
     def _prepare_context(
         self,
         client: _DirectGCAClient,
-        context_file_paths: List[str],
+        context_file_paths: list[str],
     ) -> None:
         """
         @brief Reset chat, close all files, then inject context files.
@@ -307,7 +307,7 @@ class DevNexGCAInvoker:
     def _invoke_via_bridge(
         self,
         prompt: str,
-        attached_files: List[str] | None,
+        attached_files: list[str] | None,
         started_vscode_window: bool,
     ) -> GCAInvocationResult:
         """@brief Fallback: invoke GCA via the DevNex Bridge VSIX HTTP relay."""

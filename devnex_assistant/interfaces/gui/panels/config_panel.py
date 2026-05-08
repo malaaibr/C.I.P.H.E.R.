@@ -20,7 +20,7 @@ _FIELDS = [
     ("SWC_name_FUNC_req",   "Functional Requirements",   "DLT_FUNC_req.csv"),
     ("SWC_nameInspBaseLLD", "Inspection Base LLD",       "DLTInspBaseLLD.csv"),
     ("SWC_name_HLD",        "HLD Document",              "DLT_HLD.csv"),
-    ("Linker File",         "Linker Script (.lds)",      "Linkerscript"),
+    ("lds_file",            "Linker File",              "Linkerscript"),
     ("map_file",            "Map File (.map)",           "map File"),
     ("workspace_path",      "Workspace Path",            "."),
 ]
