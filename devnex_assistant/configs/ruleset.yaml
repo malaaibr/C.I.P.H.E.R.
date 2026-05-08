@@ -1,0 +1,34 @@
+# DevNex Assistant — project ruleset
+# Controls which directories and file types are excluded from artifact scans.
+
+ignore_dirs:
+  - .git
+  - __pycache__
+  - .venv
+  - venv
+  - build
+  - dist
+  - devnex_ws_*
+
+# File extensions considered source artifacts
+source_extensions:
+  - .c
+  - .h
+  - .csv
+  - .json
+  - .md
+  - .lds
+  - .map
+
+# Safety-critical path patterns — GCA invocations on these require extra review
+critical_globs:
+  - "**/*.c"
+  - "**/*.h"
+  - "**/migrations/**"
+  - "**/security/**"
+
+# Thresholds
+line_change_medium_threshold: 80
+max_gca_retries: 3
+bridge_port: 37778
+bridge_timeout_seconds: 120

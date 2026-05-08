@@ -1,0 +1,57 @@
+{
+  "id": "S1_LLD_Generator",
+  "stage": "S1",
+  "name": "LLD Generation",
+  "description": "Generate Low-Level Design document from source code, header, HLD, and template files.",
+  "nodes": [
+    {
+      "id": "S1N1",
+      "label": "Input Collection & LLD Generation",
+      "type": "gca_invoke",
+      "human_review": false,
+      "inputs": {
+        "prompt":    "prompts/lld_gen_v1.md",
+        "files": [
+          "{{SWC_name_C}}",
+          "{{SWC_name_H}}",
+          "{{G_SWDD_TEMP}}",
+          "{{SWC_name_TEMP_LLD}}",
+          "{{SWC_name_HLD}}"
+        ]
+      },
+      "outputs": {
+        "artifact": "{{SWC_name}}_TEMP_LLD_updated.csv"
+      },
+      "depends_on": []
+    },
+    {
+      "id": "S1N2",
+      "label": "Upload to Requirements Management Tool",
+      "type": "human_review",
+      "human_review": true,
+      "review_message": "Upload '{{SWC_name}}_TEMP_LLD_updated.csv' to your Requirements Management tool (DOORS / ReqIF).\nOnce unique IDs are assigned, click Continue.",
+      "depends_on": ["S1N1"]
+    },
+    {
+      "id": "S1N3",
+      "label": "Extract IDs from Requirements Tool",
+      "type": "human_review",
+      "human_review": true,
+      "review_message": "Extract the updated LLD with new unique IDs from your Req Mgmt tool.\nSave locally as '{{SWC_name}}_LLD_withIDs.csv', then click Continue.",
+      "depends_on": ["S1N2"]
+    },
+    {
+      "id": "S1N4",
+      "label": "Categorize Requirements",
+      "type": "gca_invoke",
+      "human_review": false,
+      "inputs": {
+        "files": ["{{SWC_nameInspBaseLLD}}"]
+      },
+      "outputs": {
+        "artifact": "{{SWC_name}}_FUNC_req.csv"
+      },
+      "depends_on": ["S1N3"]
+    }
+  ]
+}

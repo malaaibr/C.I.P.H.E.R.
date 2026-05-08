@@ -1,0 +1,33 @@
+# Generated run artifacts — do not commit
+generated_artifacts/runs/
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+
+# GCA / DevNex runtime temp files
+devnex_ws_*/
+
+# IDE
+.vscode/settings.json
+.idea/
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db

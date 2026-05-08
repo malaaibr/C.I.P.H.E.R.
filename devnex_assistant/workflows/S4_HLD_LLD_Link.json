@@ -1,0 +1,24 @@
+{
+  "id": "S4_HLD_LLD_Link",
+  "stage": "S4",
+  "name": "LLD to HLD Linking",
+  "description": "Map each LLD requirement to its parent HLD item to establish vertical traceability.",
+  "nodes": [
+    {
+      "id": "S4N1",
+      "label": "Link LLD to HLD",
+      "type": "gca_invoke",
+      "human_review": false,
+      "inputs": {
+        "files": [
+          "{{SWC_name_HLD}}",
+          "artifacts/{{SWC_name}}_FUNC_req.csv"
+        ]
+      },
+      "outputs": {
+        "artifact": "HLD_LLD_Links.json"
+      },
+      "depends_on": ["S3N1"]
+    }
+  ]
+}
