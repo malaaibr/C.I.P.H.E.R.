@@ -1,101 +1,87 @@
 # devnex-assistant
 
-AI-powered V-Cycle automation tool for embedded software engineering (AUTOSAR / MISRA-C / ISO 26262).
-Drives the full LLD → Code → Test → UTD → Traceability pipeline using GCA (Google Code Assist) with HITL review gates.
+AI-assisted V-cycle automation for embedded SWC workflows. The current implementation provides a local Click CLI and PyQt6 GUI that orchestrate LLD generation, requirement categorization, LLD-to-code linking, traceability report generation, test artifact generation, UTD generation, and final HLD/LLD/code/test traceability through GCA.
 
-## What It Does
+## Supported Workflow
 
-- **S1** — Generates Low-Level Design (LLD) from source code, HLD, and templates via GCA.
-- **S1 Review** — HITL gates for Requirements Management tool upload and ID extraction.
-- **S2** — Embeds LLD requirement references as structured comments in source code.
-- **S3** — Generates LLD → Code traceability report (REQ_ID → function → line).
-- **S4** — Links LLD requirements to parent HLD items.
-- **S5** — Builds full downstream Code → LLD → HLD traceability matrix.
-- **S6** — Generates VectorCAST/Tessy test artifacts and waits for `.TST` output (HITL gate).
-- **S7** — Parses `.TST` results and generates formal Unit Test Documentation (UTD).
-- **S8** — Maps UTD test cases to LLD requirements.
-- **S9** — Consolidates full V-cycle traceability matrix: HLD → LLD → Code → Test → UTD.
+| Node | Purpose | Output |
+| --- | --- | --- |
+| `S1N1` | Generate updated LLD CSV from source, headers, HLD, and templates. | `<SWC>_TEMP_LLD_updated.csv` |
+| `S1N2` | Human gate for requirements-management upload. | Approval status |
+| `S1N3` | Human gate for extracting unique requirement IDs. | Approval status |
+| `S1N4` | Categorize requirements. | `<SWC>_FUNC_req.csv` |
+| `S2N1` | Embed LLD references into source code. | `updated_<SWC>.c` |
+| `S2N2` | Human gate for annotated-code review. | Approval status |
+| `S3N1` | Generate LLD-to-code traceability. | `LLD_Code_Trace_Report.csv` |
+| `S4N1` | Link LLD requirements to HLD items. | `HLD_LLD_Links.json` |
+| `S5N1` | Build downstream HLD/LLD/code trace matrix. | `HLD_LLD_Code_Trace_Matrix.csv` |
+| `S6N1` | Generate VectorCAST/Tessy test artifacts and wait for `.tst`. | `test.bat` |
+| `S7N1` | Generate UTD from `.tst` files. | `<SWC>_UTD.md` |
+| `S8N1` | Link UTD cases to LLD requirements. | `UTD_LLD_Links.json` |
+| `S9N1` | Generate final full traceability matrix. | `Full_Traceability_Matrix.csv` |
 
-## Install (Local)
+## Install
 
-```bash
-cd devnex-assistant
+```powershell
 python -m venv .venv
-# Windows PowerShell
 .\.venv\Scripts\Activate.ps1
 pip install -e .
-pip install pytest
+pip install -r requirements.txt
 ```
 
 ## Launch GUI
 
-```bash
+```powershell
 python main_gui.py
 ```
 
-## CLI Commands
+The GUI starts with a splash screen, then opens a configuration modal. Configuration is saved to `generated_artifacts/config.json`.
 
-```bash
-devnex run-stage --node S1N1
+## CLI Usage
+
+```powershell
+python devnex.py run-stage S1N1
+python devnex.py run-all
+python devnex.py status
+python devnex.py config --show
+```
+
+After installing the package, the `devnex` console command is also available:
+
+```powershell
+devnex run-stage S1N1
 devnex run-all
 devnex status
-devnex config --set SWC_name=TSYN
 devnex config --show
 ```
 
-## End-to-End Flow
+## Runtime Storage
 
-1. **Fill Config tab** — set SWC name, source files, HLD, LLD templates, workspace path. Click Save Config.
+- Config: `generated_artifacts/config.json`
+- Workflow state: `~/.devnex/workflow_state.json`
+- Run artifacts: `~/.devnex/runs/<run_id>/`
+- GUI settings: `~/.devnex/gui_settings.json`
+- GCA registry: `~/.gca_instances.json`
 
-2. **Run All** — click ▶ Run All in the Workflow tab to execute S1N1 → S9N1 sequentially.
+## GCA Integration
 
-3. **Human Review gates** — the workflow pauses at S1N2, S1N3, S2N2, S6N1 for manual steps:
-   - S1N2: upload generated LLD to DOORS / ReqIF and assign unique IDs.
-   - S1N3: extract updated LLD with IDs from Req Mgmt tool.
-   - S2N2: review LLD-annotated source code.
-   - S6N1: run VectorCAST/Tessy and wait for `.TST` files.
+DevNex first tries to invoke GCA through a fresh isolated VS Code workspace and WebSocket connection. If registry/WebSocket setup fails, it falls back to the DevNex Bridge VSIX HTTP relay at `http://127.0.0.1:37778`.
 
-4. **Trace tab** — view HLD → LLD → Code → Test hierarchy after S9N1 completes.
+Required external pieces:
 
-5. **Output tab** — full GCA log for all invocations.
-
-## Artifacts
-
-All run artifacts are written to:
-
-```
-generated_artifacts/
-  config.json
-  workflow_state.json
-  runs/<run_id>/
-    <SWC>_TEMP_LLD_updated.csv
-    <SWC>_FUNC_req.csv
-    updated_<SWC>.c
-    LLD_Code_Trace_Report.csv
-    HLD_LLD_Links.json
-    HLD_LLD_Code_Trace_Matrix.csv
-    test.bat
-    <SWC>_UTD.md
-    UTD_LLD_Links.json
-    Full_Traceability_Matrix.csv
-```
-
-## GCA Bridge
-
-DevNex calls GCA via the **DevNex Bridge VSIX** — a TypeScript HTTP relay on `:37778`.
-
-- Bridge must be installed in VS Code and active before running nodes.
-- Bridge status is shown in the sidebar (● Bridge :37778 active / ● Bridge unavailable).
-- Alternatively, if the `ADP` package is installed, DevNex uses `GeminiController` directly.
-
-Each GCA invocation uses an isolated temporary VS Code workspace (`devnex_ws_*`) to avoid the GeminiController latching to the wrong existing window.
-
-## Human Review Gates
-
-Review gates use `threading.Event` so the worker thread blocks while the GUI remains fully responsive. The `ReviewDialog` modal shows the instruction message and Continue / Abort buttons.
+- VS Code CLI available as `code` or `code.cmd`.
+- Active GCA communication layer or DevNex Bridge VSIX.
+- Source/HLD/LLD/template files configured in the GUI or config JSON.
 
 ## Tests
 
-```bash
-pytest
+```powershell
+python -m pytest
 ```
+
+Current tests cover config persistence, workflow state persistence, bridge behavior, and selected orchestrator paths.
+
+## Design Documents
+
+- [HLD.md](docs/HLD.md)
+- [LLD.md](docs/LLD.md)

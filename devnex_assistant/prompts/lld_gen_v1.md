@@ -32,7 +32,7 @@ Starting from the provided `.c` and `.h` files, extract every design element (fu
 | Generic SWDD template   | `{{G_SWDD_TEMP}}`       |
 | Component LLD template  | `{{SWC_name_TEMP_LLD}}` |
 | High-Level Design (HLD) | `{{SWC_name_HLD}}`      |
-| Linker script           | `{{lds_file}}`          |
+| Linker script           | `{{Linker File}}`       |
 | Map file                | `{{map_file}}`          |
 
 The full content of each file is provided below in the **Attached Input Files** section.

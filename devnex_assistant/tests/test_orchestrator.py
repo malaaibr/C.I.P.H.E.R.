@@ -13,22 +13,22 @@ class TestDevNexOrchestrator(unittest.TestCase):
         self.run_dir = Path("./test_devnex_run").resolve()
         self.run_dir.mkdir(exist_ok=True)
         self.ctx = DevNexRunContext(
-            swc_name="TSYN",
+            swc_name="DLT",
             workspace_path=str(self.run_dir),
         )
         self.orch = DevNexOrchestrator(run_context=self.ctx)
         # Seed config so validation passes
         self.orch.config = {
-            "SWC_name": "TSYN",
+            "SWC_name": "DLT",
             "G_SWDD_TEMP": "G_SWDD_TEMP.csv",
-            "SWC_name_C": "TSYN.c",
-            "SWC_name_H": "TSYN.h",
-            "SWC_name_TEMP_LLD": "TSYN_TEMP_LLD.csv",
-            "SWC_name_FUNC_req": "TSYN_FUNC_req.csv",
-            "SWC_nameInspBaseLLD": "TSYNInspBaseLLD.csv",
-            "SWC_name_HLD": "TSYN_HLD.csv",
-            "lds_file": "sailsw2.lds",
-            "map_file": "sailsw2.map",
+            "SWC_name_C": "DLT.c",
+            "SWC_name_H": "DLT.h",
+            "SWC_name_TEMP_LLD": "DLT_TEMP_LLD.csv",
+            "SWC_name_FUNC_req": "DLT_FUNC_req.csv",
+            "SWC_nameInspBaseLLD": "DLTInspBaseLLD.csv",
+            "SWC_name_HLD": "DLT_HLD.csv",
+            "Linker File": "Linkerscript",
+            "map_file": "map File",
             "workspace_path": str(self.run_dir),
         }
 
@@ -69,13 +69,13 @@ class TestDevNexOrchestrator(unittest.TestCase):
             self.orch._validate_config(["SWC_name"])
 
     def test_validate_config_passes_when_present(self):
-        self.orch.config = {"SWC_name": "TSYN"}
+        self.orch.config = {"SWC_name": "DLT"}
         self.orch._validate_config(["SWC_name"])   # should not raise
 
     def test_render_prompt_replaces_placeholders(self):
         template = "SWC is {{SWC_name}} at {{workspace_path}}."
-        rendered = self.orch._render_prompt(template, {"SWC_name": "TSYN", "workspace_path": "/tmp"})
-        self.assertEqual(rendered, "SWC is TSYN at /tmp.")
+        rendered = self.orch._render_prompt(template, {"SWC_name": "DLT", "workspace_path": "/tmp"})
+        self.assertEqual(rendered, "SWC is DLT at /tmp.")
 
     def test_load_prompt_returns_fallback_when_missing(self):
         text = self.orch._load_prompt("nonexistent_prompt.md")
@@ -89,7 +89,7 @@ class TestDevNexOrchestrator(unittest.TestCase):
     def test_run_s4n1_writes_artifact(self, _mock_gca):
         artifacts_dir = self.orch._artifacts_dir
         artifacts_dir.mkdir(parents=True, exist_ok=True)
-        (artifacts_dir / "TSYN_FUNC_req.csv").write_text("REQ_ID\nL1", encoding="utf-8")
+        (artifacts_dir / "DLT_FUNC_req.csv").write_text("REQ_ID\nL1", encoding="utf-8")
         result = self.orch._run_s4n1()
         self.assertEqual(result.node_id, "S4N1")
         self.assertEqual(result.status, "complete")

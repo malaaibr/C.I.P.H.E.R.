@@ -16,7 +16,7 @@ DEFAULT_CONFIG: dict = {
     "SWC_name_FUNC_req":    "",
     "SWC_nameInspBaseLLD":  "",
     "SWC_name_HLD":         "",
-    "lds_file":             "",
+    "Linker File":          "",
     "map_file":             "",
     "workspace_path":       ".",
 }

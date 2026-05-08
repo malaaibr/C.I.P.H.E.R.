@@ -175,7 +175,7 @@ class DevNexOrchestrator:
         """@brief S1N1 — Collect inputs, build prompt, invoke GCA, write LLD CSV."""
         self._validate_config([
             "SWC_name", "G_SWDD_TEMP", "SWC_name_C", "SWC_name_H",
-            "SWC_name_TEMP_LLD", "SWC_name_HLD", "lds_file", "map_file",
+            "SWC_name_TEMP_LLD", "SWC_name_HLD", "Linker File", "map_file",
         ])
         swc = self.config["SWC_name"]
         self._trace(f"S1N1: Building LLD generation prompt for SWC '{swc}'.")
@@ -189,7 +189,7 @@ class DevNexOrchestrator:
         # Keys whose values are file paths that must be resolved to absolute paths.
         _FILE_KEYS = [
             "SWC_name_C", "SWC_name_H", "G_SWDD_TEMP",
-            "SWC_name_TEMP_LLD", "SWC_name_HLD", "lds_file", "map_file",
+            "SWC_name_TEMP_LLD", "SWC_name_HLD", "Linker File", "map_file",
         ]
         resolved: dict[str, Path] = {k: _resolve(self.config[k]) for k in _FILE_KEYS}
 

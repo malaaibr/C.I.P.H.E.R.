@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-from pathlib import Path
 
 import click
 
@@ -98,3 +97,6 @@ def _run_single(stage: str) -> None:
     except Exception as e:
         click.echo(f"[ERROR] {e}", err=True)
         sys.exit(1)
+
+
+cli = build_cli()

@@ -8,10 +8,10 @@ from persistence.config_store import ConfigStore
 
 def test_save_and_load_roundtrip(tmp_path: Path) -> None:
     store = ConfigStore(path=tmp_path / "config.json")
-    data = {"SWC_name": "TSYN", "workspace_path": "/tmp/work"}
+    data = {"SWC_name": "DLT", "workspace_path": "/tmp/work"}
     store.save(data)
     loaded = store.load()
-    assert loaded["SWC_name"] == "TSYN"
+    assert loaded["SWC_name"] == "DLT"
     assert loaded["workspace_path"] == "/tmp/work"
 
 

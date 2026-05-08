@@ -12,16 +12,16 @@ from interfaces.gui.styles import palette
 from persistence.config_store import ConfigStore
 
 _FIELDS = [
-    ("SWC_name",            "SWC Name",                  "TSYN"),
+    ("SWC_name",            "SWC Name",                  "DLT"),
     ("G_SWDD_TEMP",         "Generic LLD Template",      "G_SWDD_TEMP.csv"),
-    ("SWC_name_C",          "Source Code (.c)",          "TSYN.c"),
-    ("SWC_name_H",          "Header File (.h)",          "TSYN.h"),
-    ("SWC_name_TEMP_LLD",   "Component LLD Template",    "TSYN_TEMP_LLD.csv"),
-    ("SWC_name_FUNC_req",   "Functional Requirements",   "TSYN_FUNC_req.csv"),
-    ("SWC_nameInspBaseLLD", "Inspection Base LLD",       "TSYNInspBaseLLD.csv"),
-    ("SWC_name_HLD",        "HLD Document",              "TSYN_HLD.csv"),
-    ("lds_file",            "Linker Script (.lds)",      "sailsw2.lds"),
-    ("map_file",            "Map File (.map)",           "sailsw2.map"),
+    ("SWC_name_C",          "Source Code (.c)",          "DLT.c"),
+    ("SWC_name_H",          "Header File (.h)",          "DLT.h"),
+    ("SWC_name_TEMP_LLD",   "Component LLD Template",    "DLT_TEMP_LLD.csv"),
+    ("SWC_name_FUNC_req",   "Functional Requirements",   "DLT_FUNC_req.csv"),
+    ("SWC_nameInspBaseLLD", "Inspection Base LLD",       "DLTInspBaseLLD.csv"),
+    ("SWC_name_HLD",        "HLD Document",              "DLT_HLD.csv"),
+    ("Linker File",         "Linker Script (.lds)",      "Linkerscript"),
+    ("map_file",            "Map File (.map)",           "map File"),
     ("workspace_path",      "Workspace Path",            "."),
 ]
 

@@ -28,16 +28,16 @@ from persistence.config_store import ConfigStore
 # ── Field definitions ─────────────────────────────────────────────────────────
 #  (key,  display_label,  placeholder,  browse,  required)
 _FIELDS = [
-    ("SWC_name",            "SWC Name *",                  "TSYN",                False, True),
+    ("SWC_name",            "SWC Name *",                  "DLT",                 False, True),
     ("G_SWDD_TEMP",         "Generic LLD Template *",      "G_SWDD_TEMP.csv",     True,  True),
-    ("SWC_name_C",          "Source Code (.c) *",          "TSYN.c",              True,  True),
-    ("SWC_name_H",          "Header File (.h) *",          "TSYN.h",              True,  True),
-    ("SWC_name_TEMP_LLD",   "Component LLD Template *",    "TSYN_TEMP_LLD.csv",   True,  True),
-    ("SWC_nameInspBaseLLD", "Inspection Base LLD *",       "TSYNInspBaseLLD.csv", True,  True),
-    ("SWC_name_HLD",        "HLD Document *",              "TSYN_HLD.csv",        True,  True),
-    ("lds_file",            "Linker Script (.lds) *",      "sailsw2.lds",         True,  True),
-    ("map_file",            "Map File (.map) *",           "sailsw2.map",         True,  True),
-    ("SWC_name_FUNC_req",   "Functional Requirements",     "TSYN_FUNC_req.csv",   True,  False),
+    ("SWC_name_C",          "Source Code (.c) *",          "DLT.c",               True,  True),
+    ("SWC_name_H",          "Header File (.h) *",          "DLT.h",               True,  True),
+    ("SWC_name_TEMP_LLD",   "Component LLD Template *",    "DLT_TEMP_LLD.csv",    True,  True),
+    ("SWC_nameInspBaseLLD", "Inspection Base LLD *",       "DLTInspBaseLLD.csv",  True,  True),
+    ("SWC_name_HLD",        "HLD Document *",              "DLT_HLD.csv",         True,  True),
+    ("Linker File",         "Linker Script (.lds) *",      "Linkerscript",        True,  True),
+    ("map_file",            "Map File (.map) *",           "map File",            True,  True),
+    ("SWC_name_FUNC_req",   "Functional Requirements",     "DLT_FUNC_req.csv",    True,  False),
     ("workspace_path",      "Workspace Path",              ".",                   False, False),
 ]
 
