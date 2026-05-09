@@ -1,10 +1,10 @@
 # CIPHER — Cognitive Intelligent Platform for Holistic Embedded R&D Automation
 ## High-Level Design: Layered Software Architecture
-### Local MVP Edition · Document ID: CIPHER-HLD-001 · Release R1.0 · 10 May 2026
+### Local MVP Edition · Document ID: CIPHER-HLD-001 · Release R1.1 · 10 May 2026
 
 ---
 
-> **Document Purpose.** This document describes the layered software architecture of the CIPHER platform for its Local MVP deployment. It is modeled after the AUTOSAR Layered Software Architecture document structure (AUTOSAR_EXP_LayeredSoftwareArchitecture R22-11) and the Agentic OS architectural pattern. It provides a top-down hierarchical view of the platform's software layers, maps every agent and platform component to exactly one layer, and defines the interaction rules between layers. This document is informative and focused on static structural views. Dynamic interface specifications are provided in the individual agent LLD documents.
+> **Document Purpose.** This document describes the layered software architecture of the CIPHER platform for its Local MVP deployment. It is modeled after the AUTOSAR Layered Software Architecture document structure (AUTOSAR_EXP_LayeredSoftwareArchitecture R22-11) and the Agentic OS architectural pattern. It provides a top-down hierarchical view of the platform's seven software layers, maps every agent and platform component to exactly one layer, and defines the interaction rules between layers. The foundational Layer 1 — the **Deployment & Runtime Substrate (DRS)** — replaces the AUTOSAR "Microcontroller" concept with a software-owned, deployment-topology-independent contract that makes the entire stack portable across Docker Compose, Kubernetes, Nomad, and bare metal without changing any agent code. This document is informative and focused on static structural views. Dynamic interface specifications are provided in the individual agent LLD documents.
 
 ---
 
@@ -39,7 +39,7 @@
     2.4  Layer Interaction Matrix
 
 3.  Architecture — Layer Definitions
-    3.1  Layer 1 — Hardware & Infrastructure (HW)
+    3.1  Layer 1 — Deployment & Runtime Substrate (DRS)
     3.2  Layer 2 — Platform Kernel (PKL)
     3.3  Layer 3 — Agent Runtime Environment (ARE)
     3.4  Layer 4 — Tool & Resource Fabric (TRF)
@@ -101,7 +101,7 @@
 
 This document describes the software architecture of CIPHER using a layered approach modeled after the AUTOSAR Classic Platform Layered Software Architecture. Specifically it does three things: it describes in a top-down approach the hierarchical structure of CIPHER software, maps every platform component and agent to one of seven defined software layers, and shows the interaction relationships between those layers.
 
-Just as AUTOSAR separates hardware-dependent code (MCAL) from hardware-independent application code through well-defined vertical layers and strictly controlled cross-layer interfaces, CIPHER separates hardware-and-infrastructure-dependent code (the Platform Kernel) from domain-specific agent logic (the Application/Agent Layer) through seven vertical layers with equally strict interface rules.
+Just as AUTOSAR separates hardware-dependent code (MCAL) from hardware-independent application code through well-defined vertical layers and strictly controlled cross-layer interfaces, CIPHER separates deployment-topology-dependent code (the DRS) from domain-specific agent logic (the Application/Agent Layer) through seven vertical layers with equally strict interface rules. The critical distinction is that AUTOSAR's bottom layer is physical silicon that the software must adapt to, while CIPHER's bottom layer is a *software contract* that CIPHER owns and any deployment topology must satisfy.
 
 This document focuses on static structural views. It does not specify a detailed software design with full dynamic interface descriptions — those are contained in the individual agent LLD documents. Examples given are representative, not exhaustive.
 
@@ -119,15 +119,15 @@ Understanding the mapping between AUTOSAR and CIPHER layers is the fastest way t
 
 | AUTOSAR Layer | CIPHER Analog | Rationale |
 |---|---|---|
-| Microcontroller | Hardware & Infrastructure (HW) | The physical compute, OS, and container runtime — the unchangeable substrate |
-| Microcontroller Abstraction Layer (MCAL) | Platform Kernel (PKL) | Direct interaction with the substrate; provides a hardware-independent interface upward |
+| Microcontroller | Deployment & Runtime Substrate (DRS) | The lowest CIPHER-owned layer — the deployment topology contract. Exposes four typed primitives (compute, network, storage, secret fabric) upward through `cipher.core.substrate`, making all higher layers completely independent of whether they run on a developer laptop, an on-prem server, or a Kubernetes cluster |
+| Microcontroller Abstraction Layer (MCAL) | Platform Kernel (PKL) | Direct interaction with the substrate; provides a deployment-independent interface upward |
 | ECU Abstraction Layer | Tool & Resource Fabric (TRF) | Abstracts the specific tool (VectorCAST, DOORS, Git) from the agents that use them, just as ECU Abstraction abstracts the specific peripheral |
-| Complex Drivers | Memory & Knowledge Fabric (MKF) | Spans from substrate to application layer; provides specialized capabilities that don't fit the normal layered model cleanly |
+| Complex Drivers | Memory & Knowledge Fabric (MKF) | Spans from the DRS up to the Agent Layer; provides specialized cross-cutting capabilities (temporal knowledge graph, four-tier memory, hybrid retrieval) that don't fit the normal sequential layered path |
 | Services Layer | Governance & Compliance Layer (GCL) | Highest layer of the "Basic Software" — provides cross-cutting services (policy, audit, identity) to all other layers |
 | Runtime Environment (RTE) | Agent Runtime Environment (ARE) | The crucial decoupling layer — above it the architecture style changes from layered to component/agent style |
 | Application Layer | Application / Agent Layer (AAL) | Domain-specialized agents that implement actual SDLC work |
 
-The single most important insight from this mapping is the role of the **Agent Runtime Environment (ARE)**, which mirrors AUTOSAR's RTE exactly: above the ARE, the architecture style changes from layered to component style. Above the ARE, agents communicate with each other through typed A2A task contracts and are completely independent of which tool servers, storage backends, or compute substrates are running underneath them.
+The single most important insight from this mapping is the role of the **Agent Runtime Environment (ARE)**, which mirrors AUTOSAR's RTE exactly: above the ARE, the architecture style changes from layered to component style. Above the ARE, agents communicate with each other through typed A2A task contracts and are completely independent of which tool servers, storage backends, or deployment substrates are running underneath them.
 
 ---
 
@@ -135,7 +135,7 @@ The single most important insight from this mapping is the role of the **Agent R
 
 ### 2.1 Top View: The Three Master Layers
 
-At the highest abstraction level, CIPHER distinguishes three master software layers that run on a Host Machine. This is the direct analog of AUTOSAR's three-layer top view (Application / RTE / Basic Software running on Microcontroller).
+At the highest abstraction level, CIPHER distinguishes three master software layers that run on any supported deployment target. This is the direct analog of AUTOSAR's three-layer top view (Application / RTE / Basic Software running on Microcontroller), with the Deployment & Runtime Substrate (DRS) replacing the Microcontroller as the foundational, topology-independent substrate contract.
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -148,14 +148,15 @@ At the highest abstraction level, CIPHER distinguishes three master software lay
 │                    PLATFORM KERNEL (PKL)                     │
 │   (Orchestrator, Memory, Tool Broker, Policy, Audit)         │
 ├─────────────────────────────────────────────────────────────┤
-│               HARDWARE & INFRASTRUCTURE (HW)                 │
-│        (Host OS, Docker Runtime, Network, Filesytem)         │
+│           DEPLOYMENT & RUNTIME SUBSTRATE (DRS)               │
+│  (Compute Fabric · Network Fabric · Storage Fabric ·         │
+│   Secret Fabric — topology-independent contracts)            │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ### 2.2 Coarse View: Expanded Layer Stack
 
-The Platform Kernel is further divided into the Governance & Compliance Layer, the Tool & Resource Fabric, the Memory & Knowledge Fabric, and the core Platform Kernel services. This mirrors AUTOSAR's coarse view that divides Basic Software into Services, ECU Abstraction, MCAL, and Complex Drivers.
+The Platform Kernel is further divided into the Governance & Compliance Layer, the Tool & Resource Fabric, the Memory & Knowledge Fabric, and the core Platform Kernel services. This mirrors AUTOSAR's coarse view that divides Basic Software into Services, ECU Abstraction, MCAL, and Complex Drivers. The Deployment & Runtime Substrate (DRS) sits beneath all of these, providing the topology-independent substrate contract the entire stack depends on.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -169,11 +170,11 @@ The Platform Kernel is further divided into the Governance & Compliance Layer, t
 ├──────────────────────────────────────────────────┤  FABRIC  (MKF)       │
 │               PLATFORM KERNEL  (PKL)             │                      │
 ├──────────────────────────────────────────────────┴──────────────────────┤
-│                    HARDWARE & INFRASTRUCTURE  (HW)                       │
+│                 DEPLOYMENT & RUNTIME SUBSTRATE  (DRS)                    │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-The Memory & Knowledge Fabric (MKF) spans vertically from the Hardware layer up to the Agent Layer — just as AUTOSAR's Complex Drivers span from the microcontroller directly up to the RTE. This reflects the fact that agents at every layer (including the Platform Kernel itself) need access to memory services without routing through an intermediate abstraction for every access.
+The Memory & Knowledge Fabric (MKF) spans vertically from the DRS up to the Agent Layer — just as AUTOSAR's Complex Drivers span from the microcontroller directly up to the RTE. This reflects the fact that agents at every layer need access to memory services without routing through multiple intermediate abstractions for every read or write.
 
 ### 2.3 Detailed View: Full CIPHER Layer Hierarchy
 
@@ -243,15 +244,15 @@ flowchart TB
         ADAPTERS["Storage Adapters\ncipher.core.adapters"]
     end
 
-    subgraph HW["Layer 1 — Hardware & Infrastructure (HW)"]
+    subgraph DRS["Layer 1 — Deployment & Runtime Substrate (DRS)"]
         direction LR
-        DOCKERRT["Docker Runtime\n(Container Orchestration)"]
-        HOSTNET["Host Network\n(localhost)"]
-        HOSTFS["Host Filesystem\n(volumes)"]
-        HOSTCPU["Host CPU/GPU\n(compute)"]
+        COMPFAB["Compute Fabric\n(cipher.substrate.compute)"]
+        NETFAB["Network Fabric\n(cipher.substrate.network)"]
+        STORFAB["Storage Fabric\n(cipher.substrate.storage)"]
+        SECFAB["Secret Fabric\n(cipher.substrate.secrets)"]
     end
 
-    HW --> PKL --> MKF --> TRF --> GCL --> ARE --> AAL
+    DRS --> PKL --> MKF --> TRF --> GCL --> ARE --> AAL
     MKF -. "cross-cuts" .-> AAL
     GCL -. "governs all" .-> TRF
     GCL -. "governs all" .-> ARE
@@ -262,9 +263,9 @@ flowchart TB
 
 This matrix defines which layers are permitted to communicate directly with which other layers. An "X" means direct communication is allowed; a blank means the layer must go through an intermediate layer. This is the CIPHER equivalent of AUTOSAR's Layer Interaction Matrix.
 
-| From ↓  To → | HW | PKL | MKF | TRF | GCL | ARE | AAL |
+| From ↓  To → | DRS | PKL | MKF | TRF | GCL | ARE | AAL |
 |---|:---:|:---:|:---:|:---:|:---:|:---:|:---:|
-| **HW** | — | X | X | — | — | — | — |
+| **DRS** | — | X | X | — | — | — | — |
 | **PKL** | X | — | X | X | X | — | — |
 | **MKF** | X | X | — | X | X | X | X |
 | **TRF** | — | X | X | — | X | — | — |
@@ -278,51 +279,209 @@ The key rules encoded in this matrix are that no agent (AAL) may communicate dir
 
 ## 3. Architecture — Layer Definitions
 
-### 3.1 Layer 1 — Hardware & Infrastructure (HW)
+### 3.1 Layer 1 — Deployment & Runtime Substrate (DRS)
 
-**The Hardware & Infrastructure layer is the lowest software layer of CIPHER.** It is the unchangeable physical substrate — the host machine's operating system, Docker container runtime, host network stack, and host filesystem. CIPHER does not own this layer; it depends on it.
+**The Deployment & Runtime Substrate is the lowest and most architecturally creative layer in CIPHER.** Unlike AUTOSAR's Microcontroller layer — which is fixed silicon that the software must adapt to — the DRS is a *software-owned contract layer* that CIPHER defines, implements, and controls. It abstracts the deployment topology entirely from every layer above it, exposing four typed primitive interfaces upward through `cipher.core.substrate` regardless of whether the platform is running on a developer laptop, an on-prem server, or a multi-region Kubernetes cluster.
 
-**Task.** Make all higher software layers independent of the specific host machine, operating system, CPU architecture, and container runtime by providing a stable, well-known interface upward through the Platform Kernel's adapter layer.
+This distinction is profound. Where AUTOSAR says "you depend on this silicon, now abstract it," CIPHER says "you define this contract, and any deployment topology must satisfy it." Every higher layer in the stack calls the DRS, not the other way around. The DRS is what makes CIPHER genuinely deployment-topology-independent rather than merely "cloud-compatible."
+
+**Task.** Provide four stable, typed, deployment-topology-independent primitive interfaces — Compute Fabric, Network Fabric, Storage Fabric, and Secret Fabric — through which the Platform Kernel and all higher layers can spawn workloads, resolve service addresses, bind durable storage, and inject credentials without ever knowing whether the underlying runtime is Docker Compose, bare metal, Nomad, or Kubernetes.
 
 **Properties.**
-- Implementation: host-machine dependent. On a Linux workstation this is the Linux kernel, Docker Engine, and host filesystem. On macOS it is the Darwin kernel, Docker Desktop, and APFS filesystem.
-- Upper Interface: exposed to the Platform Kernel (PKL) through Docker socket APIs (`/var/run/docker.sock`), POSIX filesystem calls, and POSIX network sockets.
+- Implementation: topology-specific. The DRS has a *driver* for each supported deployment target. The **Docker Compose Driver** (`cipher.substrate.drivers.compose`) implements all four fabric interfaces using the Docker SDK, host-local DNS, bind-mount volumes, and Docker secrets. The **Kubernetes Driver** (`cipher.substrate.drivers.k8s`) implements them using the Kubernetes API, CoreDNS + service mesh, PersistentVolumeClaims, and Vault or Kubernetes Secrets. A new deployment target is a new DRS driver — no other layer changes.
+- Upper Interface: standardized, topology-independent. All four fabric interfaces are defined in `cipher.core.substrate` as abstract Python protocols. The Platform Kernel calls `substrate.compute.spawn_unit(image, env, resources)` — it does not know whether this creates a Docker container or a Kubernetes Pod.
+- Lower Interface: topology-specific drivers that call Docker SDK, `kubectl`/client-go, or cloud provider APIs.
 
-**Modules at this layer.**
+**The Four Fabric Primitives.** Each fabric is a typed abstract interface with a concrete driver registered at startup via `cipher.substrate.registry.register(driver)`.
 
-The *Docker Runtime* is the container execution engine that spawns, monitors, and terminates all CIPHER service containers. It provides network namespace isolation between containers, volume mounts for persistent data, and health check integration. The *Host Network* provides the localhost loopback interface on which all CIPHER services communicate in MVP. The *Host Filesystem* provides the persistent volume directories (`./data/memgraph`, `./data/qdrant`, `./data/artifacts`, `./data/audit.db`) that survive container restarts. The *Host CPU/GPU* provides the compute substrate; when Ollama is used for local LLM inference, the GPU is accessed through this layer via CUDA or Metal APIs.
+```python
+# cipher/core/substrate/__init__.py
+# The four fabric protocols — the complete DRS public API.
+# Every higher layer depends ONLY on these four interfaces.
+# No higher layer ever imports a driver directly.
+
+from typing import Protocol, runtime_checkable
+
+@runtime_checkable
+class ComputeFabric(Protocol):
+    """
+    Spawns, monitors, and terminates isolated execution units.
+    A unit is a container in Docker Compose, a Pod in Kubernetes,
+    or a process group on bare metal. The caller never knows which.
+    """
+    def spawn_unit(self, image: str, name: str, env: dict,
+                   resources: "ResourceSpec", ports: dict) -> "UnitHandle": ...
+    def terminate_unit(self, handle: "UnitHandle", graceful: bool = True): ...
+    def health_check(self, handle: "UnitHandle") -> "HealthStatus": ...
+    def list_units(self, label_selector: dict) -> list["UnitHandle"]: ...
+
+@runtime_checkable
+class NetworkFabric(Protocol):
+    """
+    Resolves service addresses and manages inter-unit connectivity.
+    Returns a routable address for a named service, regardless of
+    whether that is 'localhost:7001', a Kubernetes ClusterIP, or
+    a service mesh virtual IP.
+    """
+    def resolve(self, service_name: str, port: int) -> str: ...
+    def register_service(self, name: str, unit: "UnitHandle", port: int): ...
+    def deregister_service(self, name: str): ...
+
+@runtime_checkable
+class StorageFabric(Protocol):
+    """
+    Binds durable storage volumes to execution units and provides
+    object store access. A 'volume' is a bind-mount locally and a
+    PersistentVolumeClaim in Kubernetes. An 'object bucket' is
+    a MinIO bucket locally and S3 in production.
+    """
+    def bind_volume(self, unit: "UnitHandle", volume_name: str,
+                    mount_path: str, read_only: bool = False): ...
+    def create_volume(self, name: str, size_gb: int): ...
+    def get_object_store_url(self, bucket: str) -> str: ...
+    def ensure_bucket(self, bucket: str): ...
+
+@runtime_checkable
+class SecretFabric(Protocol):
+    """
+    Injects credentials into execution units at spawn time.
+    Secrets are never stored in environment variables or config files
+    by the caller — they are resolved and injected by the DRS driver.
+    Locally: Docker secrets or age-encrypted files.
+    In production: Vault dynamic secrets or Kubernetes Secrets.
+    """
+    def inject_secret(self, unit: "UnitHandle", secret_name: str,
+                      mount_path: str): ...
+    def get_secret_value(self, secret_name: str) -> str: ...
+    def rotate_secret(self, secret_name: str): ...
+```
+
+**Topology Portability.** The DRS is the mechanism that makes CIPHER's "Local ≡ Cloud" principle structurally enforced rather than aspirationally stated. The Platform Kernel's startup sequence calls `substrate.compute.spawn_unit("cipher/memory-agent:1.0", ...)` — whether that creates a Docker container on localhost or a Kubernetes Deployment is entirely determined by which DRS driver was registered at boot, set through the single configuration variable `CIPHER_SUBSTRATE_DRIVER=compose|k8s|nomad`. Migrating from MVP to production requires changing that one variable and providing a `k8s` driver implementation — nothing in PKL, MKF, TRF, GCL, ARE, or AAL changes.
+
+**DRS Driver Implementations for MVP.**
+
+The *Docker Compose Driver* (`cipher.substrate.drivers.compose`) implements all four fabrics for local single-machine deployment. Its `ComputeFabric` wraps the Docker SDK (`docker.from_env()`) to spawn and monitor containers. Its `NetworkFabric` uses Docker's built-in DNS resolver on the Compose network (container names become routable hostnames). Its `StorageFabric` maps volume names to `./data/{name}` bind-mount paths and provides MinIO as the object store. Its `SecretFabric` reads `age`-encrypted files from `./secrets/` and injects them as environment variables at container creation time — the calling code never touches the raw secret.
+
+**DRS Driver Implementation Sketch.**
+
+```python
+# cipher/substrate/drivers/compose.py
+# The Docker Compose DRS driver — implements all four fabric interfaces
+# using Docker SDK. Registered at startup in MVP.
+
+import docker
+from cipher.core.substrate import ComputeFabric, NetworkFabric, StorageFabric, SecretFabric
+
+class ComposeComputeFabric:
+    """Wraps Docker SDK. spawn_unit → docker.containers.run()"""
+    def __init__(self):
+        self._client = docker.from_env()
+        self._network = "cipher_net"      # defined in docker-compose.yml
+
+    def spawn_unit(self, image, name, env, resources, ports):
+        container = self._client.containers.run(
+            image=image,
+            name=name,
+            environment=env,
+            network=self._network,
+            detach=True,
+            mem_limit=resources.memory_mb * 1024 * 1024 if resources else None,
+            labels={"cipher.managed": "true"},
+            ports=ports or {},
+        )
+        return UnitHandle(id=container.id, name=name, driver="compose")
+
+    def terminate_unit(self, handle, graceful=True):
+        c = self._client.containers.get(handle.id)
+        c.stop(timeout=30) if graceful else c.kill()
+        c.remove()
+
+    def health_check(self, handle):
+        c = self._client.containers.get(handle.id)
+        return HealthStatus(running=(c.status == "running"), detail=c.status)
+
+class ComposeNetworkFabric:
+    """Uses Docker's built-in Compose DNS: service_name → routable hostname"""
+    def resolve(self, service_name, port):
+        # Docker Compose DNS makes every container reachable by name on the network
+        return f"http://{service_name}:{port}"
+
+class ComposeStorageFabric:
+    """Maps volume names to ./data/ bind mounts; uses MinIO for object store"""
+    def __init__(self, data_root="./data"):
+        self._data_root = data_root
+
+    def get_object_store_url(self, bucket):
+        return f"http://minio:9000/{bucket}"
+
+    def ensure_bucket(self, bucket):
+        # Called at startup to ensure MinIO bucket exists
+        import boto3, botocore
+        s3 = boto3.client("s3", endpoint_url="http://localhost:9000",
+                          aws_access_key_id="cipher", aws_secret_access_key="cipher")
+        try:
+            s3.create_bucket(Bucket=bucket)
+        except botocore.exceptions.ClientError:
+            pass   # bucket already exists
+
+class ComposeSecretFabric:
+    """Reads age-encrypted secrets from ./secrets/ and injects at unit spawn"""
+    def get_secret_value(self, secret_name):
+        import subprocess, os
+        result = subprocess.run(
+            ["age", "--decrypt", f"./secrets/{secret_name}.age"],
+            capture_output=True, env={**os.environ, "AGE_KEY_FILE": "./secrets/key.txt"}
+        )
+        return result.stdout.decode().strip()
+```
+
+**Extensibility via Driver Registration.** Adding a Kubernetes deployment target requires implementing the four fabric interfaces with Kubernetes client calls and registering them at boot:
+
+```python
+# deploy/production/substrate_init.py
+from cipher.core.substrate.registry import register
+from cipher.substrate.drivers.k8s import (
+    K8sComputeFabric, K8sNetworkFabric, K8sStorageFabric, K8sSecretFabric
+)
+
+# One line to swap the entire deployment topology:
+register(compute=K8sComputeFabric(), network=K8sNetworkFabric(),
+         storage=K8sStorageFabric(), secret=K8sSecretFabric())
+```
+
+Adding a Nomad driver, a bare-metal process supervisor driver, or a serverless driver follows the exact same pattern. The rest of CIPHER is unchanged.
 
 ### 3.2 Layer 2 — Platform Kernel (PKL)
 
-**The Platform Kernel is the lowest CIPHER-owned software layer.** It contains the foundational runtime services that every agent and every higher layer depends on — the event bus, the durable workflow runtime, the checkpoint store, and the storage adapter library that abstracts concrete storage technologies from all higher layers.
+**The Platform Kernel is the first fully CIPHER-owned orchestration layer.** It sits directly above the DRS and depends exclusively on the DRS's four fabric primitives — never on Docker, Kubernetes, or any other topology-specific API. It contains the foundational runtime services that every agent and every higher layer depends on: the event bus, the durable workflow runtime, the checkpoint store, and the storage adapter library that further abstracts concrete storage technologies from all higher layers.
 
-**Analogy to AUTOSAR MCAL.** Just as AUTOSAR's Microcontroller Abstraction Layer contains the lowest-level drivers that have direct access to the microcontroller but expose a standardized, hardware-independent interface upward, the Platform Kernel has direct access to the host infrastructure (Docker, filesystem, network) but exposes a standardized, infrastructure-independent interface upward through `cipher.core.adapters`.
+**Analogy to AUTOSAR MCAL.** Just as AUTOSAR's Microcontroller Abstraction Layer exposes a standardized, hardware-independent interface upward while depending on the microcontroller's specific registers downward, the Platform Kernel exposes a standardized, deployment-independent interface upward while depending on the DRS's topology-independent fabric primitives downward.
 
-**Task.** Make all higher software layers independent of the specific infrastructure technology (SQLite vs. PostgreSQL, NATS vs. Kafka, local filesystem vs. S3). Provide the event bus backbone for all asynchronous platform events.
+**Task.** Make all higher software layers independent of the specific storage technology (SQLite vs. PostgreSQL, NATS vs. Kafka) and the specific workflow runtime (LangGraph in MVP, Temporal in production). Provide the event bus backbone for all asynchronous platform events.
 
 **Properties.**
-- Implementation: partially host-dependent. The NATS server is configured with local filesystem journal paths; the LangGraph checkpointer uses SQLite paths from the host volume.
-- Upper Interface: standardized and infrastructure-independent. Any higher-layer component that needs to write to the document store calls `cipher.core.adapters.document_store.upsert()` — it does not care whether the backing store is SQLite or Aurora PostgreSQL.
+- Implementation: deployment-independent by design. The PKL calls `substrate.storage.get_object_store_url()` to find where to store checkpoints — it never hard-codes a filesystem path or a cloud storage URL.
+- Upper Interface: standardized and deployment-independent. Any higher-layer component that needs to write to the document store calls `cipher.core.adapters.document_store.upsert()` — it does not care whether the backing store is SQLite or Aurora PostgreSQL.
 
 **Modules at this layer.**
 
-The *Event Bus (NATS)* provides the publish/subscribe backbone for all CloudEvents-enveloped platform events (`cipher.task.created`, `cipher.artifact.created`, `cipher.gate.pending`, etc.). In MVP this is a single NATS server running in a Docker container on port 4222. The *Workflow Runtime (LangGraph)* provides the checkpointed state machine execution environment for all agent task graphs. Every agent task is a LangGraph graph whose state is persisted to the Checkpoint Store after every node. The *Checkpoint Store (SQLite)* is the durable persistence layer for LangGraph workflow state. It is an append-only SQLite database mounted from the host volume so checkpoints survive container restarts. The *Observability Backend (Langfuse + OTel Collector)* receives OpenTelemetry OTLP traces from all agents and tool servers and provides the Langfuse web UI for LLM trace inspection. The *Storage Adapters (`cipher.core.adapters`)* are the thin abstraction modules that translate standardized storage API calls into concrete database operations, swappable between MVP and cloud deployments through configuration.
+The *Event Bus (NATS)* provides the publish/subscribe backbone for all CloudEvents-enveloped platform events. Its service address is resolved through `substrate.network.resolve("nats", 4222)` at startup — the PKL never has a hard-coded `localhost:4222`. The *Workflow Runtime (LangGraph)* provides the checkpointed state machine execution environment for all agent task graphs. The *Checkpoint Store* persists LangGraph workflow state after every node, using the storage path resolved from the DRS Storage Fabric. The *Observability Backend (Langfuse + OTel Collector)* receives OpenTelemetry OTLP traces from all agents and tool servers. The *Storage Adapters (`cipher.core.adapters`)* are the thin abstraction modules that translate standardized storage API calls into concrete database operations, swappable between MVP and cloud deployments through DRS driver registration, not through configuration files.
 
 ### 3.3 Layer 3 — Memory & Knowledge Fabric (MKF)
 
-**The Memory & Knowledge Fabric is the cross-cutting memory subsystem.** It spans from the Hardware layer up to the Application/Agent layer — just as AUTOSAR's Complex Drivers span from the microcontroller directly up to the RTE — because memory access is needed at every layer without routing through multiple intermediate abstractions.
+**The Memory & Knowledge Fabric is the cross-cutting memory subsystem.** It spans from the Deployment & Runtime Substrate (DRS) up to the Application/Agent Layer — just as AUTOSAR's Complex Drivers span from the microcontroller directly up to the RTE — because memory access is needed at every layer without routing through multiple intermediate abstractions.
 
-**Analogy to AUTOSAR Complex Drivers.** AUTOSAR's Complex Drivers exist because some modules (e.g., the Incremental Position Detection driver) have special requirements that don't fit cleanly into the normal MCAL → ECU Abstraction → Services path. They access the hardware directly and provide a result directly to the application. Similarly, the Memory & Knowledge Fabric accesses the storage substrate (Layer 1) directly and provides memory services directly to any layer that needs them.
+**Analogy to AUTOSAR Complex Drivers.** AUTOSAR's Complex Drivers exist because some modules have special requirements that don't fit cleanly into the normal MCAL → ECU Abstraction → Services path. They access the hardware directly and provide a result directly to the application. Similarly, the Memory & Knowledge Fabric accesses the storage substrate (DRS Storage Fabric) directly and provides memory services directly to any layer that needs them.
 
 **Task.** Provide four-tier memory services — working memory, episodic memory, semantic memory, and procedural memory — to all agents and platform components through a single, typed `MemoryAPI` interface. Own the Knowledge Graph schema and enforce the ArtifactRelation data model.
 
 **Properties.**
-- Implementation: partially host-dependent (Memgraph requires the host to have sufficient RAM; Qdrant requires sufficient disk for the HNSW index).
+- Implementation: deployment-independent at the API level. Memgraph Community is used in MVP and Neo4j Aura Enterprise in production — both are resolved through the DRS Network Fabric by name. No higher layer ever contains a hard-coded connection string.
 - Upper Interface: standardized `MemoryAPI` — completely storage-technology-independent. An agent calling `memory.retrieve()` does not know whether the backing store is Memgraph + Qdrant embedded or Neo4j Aura + Qdrant Cloud.
 
 **Modules at this layer.**
 
-The *Memory Agent (AGT-007)* is the manager module that owns all reads and writes to the memory subsystem. It performs episodic-to-semantic consolidation on a schedule, enforces retention policies, and maintains the temporal validity of Knowledge Graph edges. The *Knowledge Graph (Memgraph Community)* stores the full artifact relation model — every Requirement, Design, Code, Test, Run, Agent, Person, Decision, and ChangeRequest node, connected by typed `ArtifactRelation` edges with `valid_from`, `valid_to`, and `confidence` properties. The *Vector Store (Qdrant embedded)* stores BGE-M3 embeddings for all artifact chunks, organized into four collections: `requirements`, `design_docs`, `source_code`, and `test_cases`. The *Working Memory (Redis)* provides per-agent-per-task key-value storage with TTL, used as the ephemeral task scratchpad. The *Document Store (SQLite)* stores structured metadata — TaskContracts, project configurations, agent registrations, and plan objects. The *Artifact Object Store (MinIO)* stores the actual binary content of artifacts — LLD CSV files, annotated source files, UTD documents, coverage reports — referenced from the Knowledge Graph by URI.
+The *Memory Agent (AGT-007)* is the manager module that owns all reads and writes to the memory subsystem. It performs episodic-to-semantic consolidation on a schedule, enforces retention policies, and maintains the temporal validity of Knowledge Graph edges. The *Knowledge Graph (Memgraph Community)* stores the full artifact relation model — every Requirement, Design, Code, Test, Run, Agent, Person, Decision, and ChangeRequest node, connected by typed `ArtifactRelation` edges with `valid_from`, `valid_to`, and `confidence` properties. The *Vector Store (Qdrant embedded)* stores BGE-M3 embeddings for all artifact chunks, organized into four collections: `requirements`, `design_docs`, `source_code`, and `test_cases`. The *Working Memory (Redis)* provides per-agent-per-task key-value storage with TTL, used as the ephemeral task scratchpad. The *Document Store (SQLite)* stores structured metadata — TaskContracts, project configurations, agent registrations, and plan objects. The *Artifact Object Store (MinIO)* stores the actual binary content of artifacts — LLD CSV files, annotated source files, UTD documents, coverage reports — with its bucket URL resolved from `substrate.storage.get_object_store_url("cipher-artifacts")`.
 
 ### 3.4 Layer 4 — Tool & Resource Fabric (TRF)
 
@@ -331,7 +490,7 @@ The *Memory Agent (AGT-007)* is the manager module that owns all reads and write
 **Task.** Provide equal mechanisms to access any development tool, build system, requirements management system, test bench, or LLM provider, regardless of its location (local Docker container, remote server, cloud API) and its interface type (CLI, REST, gRPC, proprietary protocol).
 
 **Properties.**
-- Implementation: partially host-dependent. The VectorCAST MCP Server requires a VectorCAST installation on the host. The Git MCP Server requires a Git installation. The LLM Gateway can use either local Ollama or remote GCA/Anthropic endpoints.
+- Implementation: deployment-independent at the API level. The VectorCAST MCP Server is spawned as a compute unit through `substrate.compute.spawn_unit()` regardless of whether that means a Docker container or a Kubernetes Job. All tool server addresses are resolved through `substrate.network.resolve()` — no hard-coded host ports appear in TRF code.
 - Upper Interface: standardized MCP JSON-RPC 2.0. All tool calls from any agent go through the same `POST /mcp/tools/{name}/invoke` interface regardless of the underlying tool.
 
 **Modules at this layer.**
@@ -424,7 +583,7 @@ Examples in CIPHER: the *`cipher.core.schemas` library* provides schema validati
 
 ### 5.1 System Boundary and External Actors
 
-The system boundary for the CIPHER Local MVP encompasses all software running inside the Docker Compose stack. External actors are the human users (Developer, Technical Lead, QA Engineer), the CI/CD pipeline (GitHub Actions / GitLab CI), and the external tool services (IBM DOORS/DOORS Next, Git remote, VectorCAST license server, LLM API providers).
+The system boundary for the CIPHER Local MVP encompasses all software running inside the platform stack, managed through the Docker Compose DRS driver. External actors are the human users (Developer, Technical Lead, QA Engineer), the CI/CD pipeline (GitHub Actions / GitLab CI), and the external tool services (IBM DOORS/DOORS Next, Git remote, VectorCAST license server, LLM API providers).
 
 ```mermaid
 C4Context
@@ -434,7 +593,7 @@ C4Context
     Person(lead,  "Technical Lead",  "Approves HITL gates via web dashboard")
     Person(qa,    "QA Engineer",     "Queries traceability, exports evidence")
 
-    System(cipher, "CIPHER Local MVP\n(docker-compose stack)", "7-layer agentic platform")
+    System(cipher, "CIPHER Platform\n(Docker Compose DRS driver, Local MVP)", "7-layer agentic platform")
 
     System_Ext(doors,  "DOORS / ReqIF files",      "Requirements source")
     System_Ext(git,    "Git repository",            "Source code, artifact history")
@@ -517,10 +676,11 @@ flowchart TB
         ADAPTERS_LIB["cipher.core.adapters\n(storage abstraction)"]
     end
 
-    subgraph L1_HW["Layer 1 — Hardware & Infrastructure"]
-        DOCKER_RT["Docker Engine\n(container runtime)"]
-        HOST_NET["Host Network\n(localhost bridge)"]
-        HOST_FS["Host Filesystem\n(./data/ volumes)"]
+    subgraph L1_DRS["Layer 1 — Deployment & Runtime Substrate (DRS)"]
+        DRS_COMP["Compute Fabric\ncipher.substrate.compute\n(ComposeComputeFabric — MVP)"]
+        DRS_NET["Network Fabric\ncipher.substrate.network\n(ComposeNetworkFabric — MVP)"]
+        DRS_STOR["Storage Fabric\ncipher.substrate.storage\n(ComposeStorageFabric — MVP)"]
+        DRS_SEC["Secret Fabric\ncipher.substrate.secrets\n(ComposeSecretFabric — MVP)"]
     end
 
     %% External → ARE (entry point)
@@ -570,10 +730,11 @@ flowchart TB
     OTEL_EM -->|"OTLP"| LANGFUSE_S
     NATS_S -->|"CloudEvents"| MEM_AGT & ORCH
 
-    %% PKL → HW
-    ADAPTERS_LIB --> HOST_FS
-    NATS_S --> HOST_FS
-    DOCKER_RT --> HOST_FS & HOST_NET
+    %% PKL → DRS
+    ADAPTERS_LIB --> DRS_STOR
+    NATS_S --> DRS_STOR
+    LANGGRAPH_RT --> DRS_COMP
+    DRS_COMP & DRS_NET & DRS_STOR & DRS_SEC -.->|"substrate contract"| L2_PKL
 ```
 
 ### 5.3 Request Lifecycle — Normative Flow
@@ -714,7 +875,7 @@ sequenceDiagram
 **Properties.**
 - Implementation: specific to automotive embedded SDLC. The LLD generation prompts (`lld_gen_v1.md`), code annotation prompts (`code_link_v1.md`), and traceability prompts (`full_trace_v1.md`) are AUTOSAR/MISRA-C-aware and stored in the Procedural Memory tier (MKF). The LLM backend is GCA (Google Code Assist) accessed through the LLM Gateway.
 - Upper Interface: thirteen A2A skills declared in the Agent Card. Input is a TaskContract with `inputArtifacts` referencing graph URIs. Output is a `StepResult` with `outputArtifacts` as graph URIs + MinIO object URIs.
-- Lower Interface: calls Tool Broker (TRF) for all LLM completions, file reads, Git operations, and VectorCAST runs. Calls Memory Agent (MKF) for context materialization and artifact persistence. Never calls the Platform Kernel or Hardware layers directly.
+- Lower Interface: calls Tool Broker (TRF) for all LLM completions, file reads, Git operations, and VectorCAST runs. Calls Memory Agent (MKF) for context materialization and artifact persistence. Never calls the Platform Kernel or DRS layers directly.
 
 **The Adapter Pattern (wrapping existing DevNex code without modification).**
 
@@ -1024,7 +1185,7 @@ flowchart LR
 
 These rules are derived from the AUTOSAR interface rules and adapted to the CIPHER context. Every CIPHER engineer must know them.
 
-**Rule 1 — Upward only through defined interfaces.** No layer may call a layer above it directly. The Hardware layer cannot call the Platform Kernel's public API — information flows upward only when the PKL explicitly initiates it (e.g., by polling the filesystem). The PKL cannot call agents in the AAL — information flows upward when agents are invoked through the ARE.
+**Rule 1 — Upward only through defined interfaces.** No layer may call a layer above it directly. The DRS cannot call the Platform Kernel's public API — information flows upward only when the PKL explicitly calls the DRS's substrate primitives. The PKL cannot call agents in the AAL — information flows upward when agents are invoked through the ARE.
 
 **Rule 2 — Skip-layer calls are forbidden except for MKF.** A component in the Application/Agent Layer (AAL) may not call the Platform Kernel (PKL) directly, bypassing ARE, GCL, and TRF. The sole exception is the Memory & Knowledge Fabric (MKF), which is explicitly designated as a cross-cutting layer that AAL agents may call directly.
 
@@ -1183,10 +1344,13 @@ cost_limits:
 The MVP platform starts with `docker compose up` from `deploy/local/`. The startup order is enforced by Docker Compose `depends_on` health checks to ensure each layer's services are ready before the layer above starts.
 
 ```
-Phase 1 — Hardware & Infrastructure (HW):
-  Docker Engine: already running (host)
-  Host volumes mounted: ./data/memgraph, ./data/qdrant, ./data/audit.db,
-                        ./data/checkpoints, ./data/artifacts
+Phase 1 — Deployment & Runtime Substrate (DRS):
+  DRS driver registered: cipher.substrate.drivers.compose.ComposeDriver
+  Compute Fabric: Docker Engine verified reachable (docker info)
+  Network Fabric: cipher_net Docker network created
+  Storage Fabric: ./data/ volumes created — memgraph, qdrant, audit.db,
+                  checkpoints, artifacts; MinIO bucket cipher-artifacts ensured
+  Secret Fabric:  ./secrets/ directory scanned; age-encrypted secrets verified
 
 Phase 2 — Platform Kernel (PKL) services start:
   1. NATS server (:4222) — health: TCP connect
@@ -1243,8 +1407,11 @@ This table provides a complete inventory of all software modules in the CIPHER L
 
 | Module | Layer | Type | Implementation | Port |
 |---|---|---|---|---|
-| Docker Engine | HW | Driver | Host Docker Engine | — |
-| Host Filesystem | HW | Driver | POSIX / Host OS | — |
+| Compute Fabric (ComposeComputeFabric) | DRS | Driver | `cipher/substrate/drivers/compose.py` | — |
+| Network Fabric (ComposeNetworkFabric) | DRS | Interface | `cipher/substrate/drivers/compose.py` | — |
+| Storage Fabric (ComposeStorageFabric) | DRS | Driver | `cipher/substrate/drivers/compose.py` | — |
+| Secret Fabric (ComposeSecretFabric) | DRS | Driver | `cipher/substrate/drivers/compose.py` | — |
+| `cipher.core.substrate` (protocol definitions) | DRS | Interface | `cipher/core/substrate/__init__.py` | — |
 | NATS Server | PKL | Handler | `nats-server:2.10` | :4222 |
 | LangGraph Runtime | PKL | Manager | `langgraph>=0.4` (in-process) | — |
 | Checkpoint SQLite | PKL | Driver | `sqlite3` (stdlib) | — |
@@ -1292,13 +1459,13 @@ This summary table defines what each layer is allowed to depend on directly. It 
 
 | Layer | May depend on | May NOT depend on |
 |---|---|---|
-| **HW** (Layer 1) | Host OS only | Nothing in CIPHER |
-| **PKL** (Layer 2) | HW, MKF (storage only) | TRF, GCL, ARE, AAL |
-| **MKF** (Layer 3) | HW (storage drivers), PKL (adapters) | TRF, GCL, ARE, AAL |
-| **TRF** (Layer 4) | PKL, MKF, GCL | HW directly, ARE, AAL |
+| **DRS** (Layer 1) | Topology-specific drivers only (Docker SDK, k8s client-go, Nomad API) | Nothing in CIPHER layers above |
+| **PKL** (Layer 2) | DRS (all four fabric primitives), MKF (storage only) | TRF, GCL, ARE, AAL |
+| **MKF** (Layer 3) | DRS (storage and network fabric), PKL (adapters) | TRF, GCL, ARE, AAL |
+| **TRF** (Layer 4) | PKL, MKF, GCL | DRS directly, ARE, AAL |
 | **GCL** (Layer 5) | PKL, MKF (audit writes) | TRF internals, ARE, AAL |
-| **ARE** (Layer 6) | PKL (event bus), MKF, TRF, GCL | HW directly |
-| **AAL** (Layer 7) | ARE (A2A), MKF (direct memory), GCL (policy/audit) | PKL directly, TRF directly, HW directly |
+| **ARE** (Layer 6) | PKL (event bus), MKF, TRF, GCL | DRS directly |
+| **AAL** (Layer 7) | ARE (A2A), MKF (direct memory), GCL (policy/audit) | PKL directly, TRF directly, DRS directly |
 
 ---
 
