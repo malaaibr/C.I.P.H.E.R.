@@ -1,5 +1,6 @@
 # Byte-compiled / optimized / DLL files
 __pycache__/
+**/__pycache__/
 *.py[codz]
 *$py.class
 
@@ -25,6 +26,11 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# DevNex local/generated artifacts
+devnex_assistant/generated_artifacts/
+devnex_assistant/devnex_assistant.egg-info/
+devnex_assistant/**/*.pyc
 
 # PyInstaller
 #   Usually these files are written by a python script from a template

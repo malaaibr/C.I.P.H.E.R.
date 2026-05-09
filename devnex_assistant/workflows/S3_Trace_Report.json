@@ -1,0 +1,24 @@
+{
+  "id": "S3_Trace_Report",
+  "stage": "S3",
+  "name": "LLD to Code Traceability",
+  "description": "Generate LLD→Code traceability report linking requirement IDs to code functions.",
+  "nodes": [
+    {
+      "id": "S3N1",
+      "label": "Generate LLD→Code Traceability Report",
+      "type": "gca_invoke",
+      "human_review": false,
+      "inputs": {
+        "files": [
+          "artifacts/updated_{{SWC_name}}.c",
+          "artifacts/{{SWC_name}}_FUNC_req.csv"
+        ]
+      },
+      "outputs": {
+        "artifact": "LLD_Code_Trace_Report.csv"
+      },
+      "depends_on": ["S2N2"]
+    }
+  ]
+}

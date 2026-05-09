@@ -1,0 +1,24 @@
+{
+  "id": "S8_UTD_Link",
+  "stage": "S8",
+  "name": "UTD to LLD Linking",
+  "description": "Map each unit test case to its corresponding LLD functional requirement.",
+  "nodes": [
+    {
+      "id": "S8N1",
+      "label": "Link UTD to LLD",
+      "type": "gca_invoke",
+      "human_review": false,
+      "inputs": {
+        "files": [
+          "artifacts/{{SWC_name}}_UTD.md",
+          "artifacts/{{SWC_name}}_FUNC_req.csv"
+        ]
+      },
+      "outputs": {
+        "artifact": "UTD_LLD_Links.json"
+      },
+      "depends_on": ["S7N1"]
+    }
+  ]
+}

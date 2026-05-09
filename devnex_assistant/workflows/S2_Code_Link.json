@@ -1,0 +1,33 @@
+{
+  "id": "S2_Code_Link",
+  "stage": "S2",
+  "name": "LLD to Code Linking",
+  "description": "Embed LLD requirement references as structured comments in source code.",
+  "nodes": [
+    {
+      "id": "S2N1",
+      "label": "Embed LLD in Source Code",
+      "type": "gca_invoke",
+      "human_review": false,
+      "inputs": {
+        "prompt": "prompts/code_link_v1.md",
+        "files": [
+          "{{SWC_name_C}}",
+          "artifacts/{{SWC_name}}_FUNC_req.csv"
+        ]
+      },
+      "outputs": {
+        "artifact": "updated_{{SWC_name}}.c"
+      },
+      "depends_on": ["S1N4"]
+    },
+    {
+      "id": "S2N2",
+      "label": "Await Developer Review",
+      "type": "human_review",
+      "human_review": true,
+      "review_message": "Review the LLD-annotated source file 'updated_{{SWC_name}}.c'.\nVerify all requirement references are correctly placed before continuing.",
+      "depends_on": ["S2N1"]
+    }
+  ]
+}

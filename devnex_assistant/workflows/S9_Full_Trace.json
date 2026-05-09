@@ -1,0 +1,25 @@
+{
+  "id": "S9_Full_Trace",
+  "stage": "S9",
+  "name": "Full Traceability Report",
+  "description": "Consolidate all traceability links into the final full V-cycle matrix: HLD→LLD→Code→Test→UTD.",
+  "nodes": [
+    {
+      "id": "S9N1",
+      "label": "Build Full Traceability Matrix",
+      "type": "gca_invoke",
+      "human_review": false,
+      "inputs": {
+        "prompt": "prompts/full_trace_v1.md",
+        "files": [
+          "artifacts/HLD_LLD_Code_Trace_Matrix.csv",
+          "artifacts/UTD_LLD_Links.json"
+        ]
+      },
+      "outputs": {
+        "artifact": "Full_Traceability_Matrix.csv"
+      },
+      "depends_on": ["S8N1"]
+    }
+  ]
+}

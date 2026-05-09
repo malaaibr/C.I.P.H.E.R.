@@ -1,0 +1,24 @@
+{
+  "id": "S5_Full_Downstream",
+  "stage": "S5",
+  "name": "Code→LLD→HLD Traceability Report Generation",
+  "description": "Consolidate HLD→LLD and LLD→Code links into a single downstream traceability matrix.",
+  "nodes": [
+    {
+      "id": "S5N1",
+      "label": "Full Downstream Trace (Code→LLD→HLD)",
+      "type": "gca_invoke",
+      "human_review": false,
+      "inputs": {
+        "files": [
+          "artifacts/LLD_Code_Trace_Report.csv",
+          "artifacts/HLD_LLD_Links.json"
+        ]
+      },
+      "outputs": {
+        "artifact": "HLD_LLD_Code_Trace_Matrix.csv"
+      },
+      "depends_on": ["S4N1"]
+    }
+  ]
+}
