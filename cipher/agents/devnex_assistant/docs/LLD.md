@@ -4,7 +4,7 @@
 
 ### `NodeResult`
 
-- File: `devnex_assistant/core/orchestrator.py:23-28`
+- File: `cipher/agents/devnex_assistant/core/orchestrator.py:23-28`
 - Type: dataclass
 - Responsibility: Carries a node execution result.
 - Attributes:
@@ -16,7 +16,7 @@
 
 ### `DevNexOrchestrator`
 
-- File: `devnex_assistant/core/orchestrator.py:31-532`
+- File: `cipher/agents/devnex_assistant/core/orchestrator.py:31-532`
 - Responsibility: Coordinates V-cycle node execution.
 - Stateful attributes:
   - `run_context`
@@ -57,7 +57,7 @@
 
 ### `DevNexRunContext`
 
-- File: `devnex_assistant/core/run_context.py:12-32`
+- File: `cipher/agents/devnex_assistant/core/run_context.py:12-32`
 - Type: Pydantic `BaseModel`
 - Responsibility: Stores run ID, start time, SWC name, workspace path, and run artifact root.
 - Methods:
@@ -66,7 +66,7 @@
 
 ### `WorkflowEngine`
 
-- File: `devnex_assistant/core/workflow_engine.py:18-154`
+- File: `cipher/agents/devnex_assistant/core/workflow_engine.py:18-154`
 - Responsibility: Executes AF.json workflow graphs.
 - Methods:
   - `execute(workflow_path, inputs)` loads JSON, topologically sorts nodes, executes each node by `serviceId`, returns last LLM response.

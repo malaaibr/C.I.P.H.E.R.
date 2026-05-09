@@ -26,8 +26,8 @@ fi
 print_usage() {
   cat <<'EOF'
 Usage:
-  bash devnex_assistant/run_gui.sh quick
-  bash devnex_assistant/run_gui.sh full
+  bash cipher/agents/devnex_assistant/run_gui.sh quick
+  bash cipher/agents/devnex_assistant/run_gui.sh full
 
 Modes:
   quick  Reuse the existing .venv when present, compile Python files, then run main_gui.py.

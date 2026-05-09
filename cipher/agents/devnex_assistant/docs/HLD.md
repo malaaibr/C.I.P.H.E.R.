@@ -6,8 +6,8 @@ DevNex Assistant is a local desktop and CLI automation tool for embedded softwar
 
 The system runs as:
 
-- A Click CLI through `devnex_assistant/devnex.py` and `devnex_assistant/interfaces/cli/cli_commands.py`.
-- A PyQt6 desktop app through `devnex_assistant/main_gui.py` and `devnex_assistant/interfaces/gui/app.py`.
+- A Click CLI through `cipher/agents/devnex_assistant/devnex.py` and `cipher/agents/devnex_assistant/interfaces/cli/cli_commands.py`.
+- A PyQt6 desktop app through `cipher/agents/devnex_assistant/main_gui.py` and `cipher/agents/devnex_assistant/interfaces/gui/app.py`.
 - A local automation client that invokes GCA through VS Code WebSocket integration or an HTTP bridge.
 
 ## 2. Architectural Style
@@ -21,7 +21,7 @@ The codebase follows a layered orchestration style:
 - Skill layer: intent-to-node adapters for future conversational workflows.
 - Utility/UI layer: logging, constants, styles, and custom widgets.
 
-The main runtime path is a sequential pipeline from `S1N1` to `S9N1`, implemented in `DevNexOrchestrator.run_all()` at `devnex_assistant/core/orchestrator.py:148`. A separate graph executor exists in `devnex_assistant/core/workflow_engine.py`, but current CLI and GUI flows use the orchestrator directly.
+The main runtime path is a sequential pipeline from `S1N1` to `S9N1`, implemented in `DevNexOrchestrator.run_all()` at `cipher/agents/devnex_assistant/core/orchestrator.py:148`. A separate graph executor exists in `cipher/agents/devnex_assistant/core/workflow_engine.py`, but current CLI and GUI flows use the orchestrator directly.
 
 ## 3. Layer Map
 
@@ -127,15 +127,15 @@ orchestrator stage
 
 | Entry Point | File | Trigger | Initiates |
 | --- | --- | --- | --- |
-| `cli()` | `devnex_assistant/devnex.py:14` | `python devnex.py` | Click command group. |
+| `cli()` | `cipher/agents/devnex_assistant/devnex.py:14` | `python devnex.py` | Click command group. |
 | `build_cli()` | `interfaces/cli/cli_commands.py:20` | Imported by CLI wrapper | CLI command definitions. |
 | `run_stage(stage)` | `interfaces/cli/cli_commands.py:29` | `devnex run-stage STAGE` | Single node execution. |
 | `run_all()` | `interfaces/cli/cli_commands.py:34` | `devnex run-all` | Full pipeline execution. |
 | `status()` | `interfaces/cli/cli_commands.py:51` | `devnex status` | Workflow state display. |
 | `config_cmd(show)` | `interfaces/cli/cli_commands.py:66` | `devnex config --show` | Config display/validation. |
-| `main()` | `devnex_assistant/main_gui.py:10` | `python main_gui.py` | PyQt6 GUI startup. |
+| `main()` | `cipher/agents/devnex_assistant/main_gui.py:10` | `python main_gui.py` | PyQt6 GUI startup. |
 | `launch_app(app)` | `interfaces/gui/app.py:6` | Called by `main()` | Splash, config modal, main window. |
-| `generate()` | `devnex_assistant/generate_icon.py:35` | `python generate_icon.py` | Icon asset generation. |
+| `generate()` | `cipher/agents/devnex_assistant/generate_icon.py:35` | `python generate_icon.py` | Icon asset generation. |
 | `WorkflowEngine.execute()` | `core/workflow_engine.py:49` | Programmatic use | AF.json workflow execution. |
 
 ## 7. External Boundaries
@@ -151,7 +151,7 @@ orchestrator stage
 | Config file | `persistence/config_store.py` | `generated_artifacts/config.json`. |
 | Workflow state | `persistence/state_store.py` | `~/.devnex/workflow_state.json`. |
 | Run artifacts | `core/orchestrator.py` | `~/.devnex/runs/{run_id}/...`. |
-| Prompt templates | `core/orchestrator.py:515` | `devnex_assistant/prompts/*.md`. |
+| Prompt templates | `core/orchestrator.py:515` | `cipher/agents/devnex_assistant/prompts/*.md`. |
 | GCA registry | `gca/vscode_invoker.py:121,148` | `~/.gca_instances.json`. |
 | GUI settings | `interfaces/gui/settings_manager.py` | `~/.devnex/gui_settings.json`. |
 | Human input | `core/orchestrator.py:531` | CLI `input()` for review gates. |

@@ -676,7 +676,7 @@ cipher/
 │   ├── jira_mcp/
 │   └── llm_gateway/
 ├── agents/
-│   ├── devnex/          # Agent-001 wrapper around existing DevNex code
+│   ├── devnex_assistant/ # Agent-001 implementation integrated into the agent tree
 │   ├── planner/
 │   ├── asil_reviewer/
 │   ├── compliance/
@@ -788,7 +788,7 @@ flowchart LR
 ### Concrete Wrapping (pseudocode)
 
 ```python
-# cipher/agents/devnex/server.py
+# cipher/agents/devnex_assistant/server.py
 from a2a import AgentCard, AgentSkill, AgentCapabilities, A2AServer
 from a2a.tasks import Task, TaskStatus
 from cipher.core.memory import MemoryClient

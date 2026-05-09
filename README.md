@@ -12,10 +12,11 @@ The project is aimed at teams that need more than isolated code generation or te
 
 Its design is local-first and cloud-ready. The same contracts are intended to support a laptop-scale MVP and a production deployment on Kubernetes, with protocol-level compatibility across both modes.
 
-This repository currently serves two roles:
+This repository currently serves three roles:
 
 - `docs/CIPHER_archi.md` is the primary architecture and implementation contract for the broader CIPHER platform.
-- `devnex_assistant/` contains the existing DevNex implementation that is intended to plug into CIPHER as Agent-001.
+- `cipher/` contains the local MVP scaffold for the future CIPHER runtime.
+- `cipher/agents/devnex_assistant/` contains the existing DevNex implementation that is intended to plug into CIPHER as Agent-001.
 
 ## Why CIPHER?
 
@@ -208,9 +209,10 @@ For the later production architecture, CIPHER targets:
 
 ### Current repository reality
 
-This repository does not yet contain the full CIPHER runtime stack at the root. The concrete implementation currently present is the `devnex_assistant/` subproject, which includes:
+This repository does not yet contain the full CIPHER runtime implementation, but it now includes a root-level local MVP scaffold under `cipher/` plus the concrete `cipher/agents/devnex_assistant/` subproject, which includes:
 
-- Python package metadata in [devnex_assistant/pyproject.toml](devnex_assistant/pyproject.toml)
+- Local MVP package scaffold for control plane, agent boundaries, memory, tooling, governance, observability, and local deployment
+- Python package metadata in [cipher/agents/devnex_assistant/pyproject.toml](cipher/agents/devnex_assistant/pyproject.toml)
 - Python `>=3.11`
 - CLI and PyQt6 GUI
 - Local workflow orchestration, persistence, prompts, and tests
@@ -222,6 +224,15 @@ This repository does not yet contain the full CIPHER runtime stack at the root. 
 ```text
 .
 |- README.md
+|- cipher/
+|  |- core/
+|  |- orchestrator/
+|  |- memory/
+|  |- tools/
+|  |- agents/
+|  |- governance/
+|  |- observability/
+|  `- deploy/
 |- docs/
 |  |- CIPHER_archi.md
 |  |- AI-Powered V-Cycle Quality and Traceability.md
@@ -231,22 +242,24 @@ This repository does not yet contain the full CIPHER runtime stack at the root. 
 |  |- CIPHER_CORE_IDeaV2.md
 |  |- GravisVoiceAsisstantAgent.md
 |  `- ...
-`- devnex_assistant/
-   |- core/
-   |- gca/
-   |- interfaces/
-   |- persistence/
-   |- prompts/
-   |- skills/
-   |- tests/
-   |- workflows/
-   |- docs/
-   `- pyproject.toml
+|  `- agents/
+|     |- devnex_assistant/
+|     |  |- core/
+|     |  |- gca/
+|     |  |- interfaces/
+|     |  |- persistence/
+|     |  |- prompts/
+|     |  |- skills/
+|     |  |- tests/
+|     |  |- workflows/
+|     |  |- docs/
+|     |  `- pyproject.toml
+|     `- ...
 ```
 
-### Planned repository structure
+### Local MVP scaffold
 
-The architecture document proposes the following top-level CIPHER layout as the platform implementation lands:
+The root `cipher/` package has been scaffolded around the architecture's Phase 1 boundaries:
 
 ```text
 cipher/
@@ -260,17 +273,21 @@ cipher/
   deploy/
 ```
 
-This structure is planned. It does not yet exist at the repository root.
+Current intent:
+
+- `core/`, `orchestrator/`, `memory/`, `tools/`, `governance/`, and `observability/` define the MVP platform boundaries
+- `agents/` includes Phase 1 targets (`devnex_assistant`, `compliance`, `memory_agent`, `tool_agent`) plus early stubs for later agents
+- `deploy/local/` is reserved for MVP bootstrap assets once service definitions land
 
 ## Getting Started
 
 ### Current state
 
-This repository currently contains the architecture and implementation contract for CIPHER, plus the existing `devnex_assistant/` codebase that is intended to become Agent-001.
+This repository currently contains the architecture contract for CIPHER, a root-level local MVP scaffold in `cipher/`, and the existing `cipher/agents/devnex_assistant/` codebase that is intended to become Agent-001.
 
 The full CIPHER runtime is not yet present as a runnable root-level platform.
 
-**Runtime setup for CIPHER Phase 1 components will be added as those components land.**
+**The file structure for Phase 1 now exists, but runtime wiring and service bootstrap are still to be implemented.**
 
 ### Working with the current repository
 
@@ -284,14 +301,14 @@ cd AI_agents
 Read:
 
 - [docs/CIPHER_archi.md](docs/CIPHER_archi.md)
-- [devnex_assistant/README.md](devnex_assistant/README.md)
+- [cipher/agents/devnex_assistant/README.md](cipher/agents/devnex_assistant/README.md)
 
 ### Running the existing DevNex implementation
 
-The `devnex_assistant/` subproject is runnable today.
+The `cipher/agents/devnex_assistant/` subproject is runnable today.
 
 ```powershell
-cd devnex_assistant
+cd cipher/agents/devnex_assistant
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -e .
@@ -302,7 +319,7 @@ python main_gui.py
 CLI examples for the current DevNex implementation:
 
 ```powershell
-cd devnex_assistant
+cd cipher/agents/devnex_assistant
 python devnex.py run-stage S1N1
 python devnex.py run-all
 python devnex.py status
@@ -397,7 +414,7 @@ Every task, tool call, review step, and generated artifact should be traceable.
 | --- | --- |
 | [docs/CIPHER_archi.md](docs/CIPHER_archi.md) | Full architecture and implementation contract |
 | [README.md](README.md) | Project overview and repository onboarding |
-| [devnex_assistant/README.md](devnex_assistant/README.md) | Current DevNex implementation usage and structure |
+| [cipher/agents/devnex_assistant/README.md](cipher/agents/devnex_assistant/README.md) | Current DevNex implementation usage and structure |
 
 Additional background material is available under [`docs/`](docs).
 
@@ -413,7 +430,7 @@ Standard contribution flow:
 4. Run relevant tests and linting where available.
 5. Open a pull request describing the problem, approach, and impact.
 
-Today, the most concrete testable code lives in `devnex_assistant/`. A more detailed `CONTRIBUTING.md` can be added as the platform structure stabilizes.
+Today, the most concrete testable code lives in `cipher/agents/devnex_assistant/`. A more detailed `CONTRIBUTING.md` can be added as the platform structure stabilizes.
 
 ## License
 
