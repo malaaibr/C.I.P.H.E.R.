@@ -1,0 +1,13 @@
+{
+  "SWC_name": "DLT",
+  "G_SWDD_TEMP": "C:/AI_Agents/CodeBase/AGentForge_DevNex/uc_NewCstlm_firstRelease/LLD_TEMP.csv",
+  "SWC_name_C": "C:/AI_Agents/CodeBase/DLT/src/DLT.c",
+  "SWC_name_H": "C:/AI_Agents/CodeBase/DLT/inc/DLT.h",
+  "SWC_name_TEMP_LLD": "C:/AI_Agents/CodeBase/LLD_TEMP.csv",
+  "SWC_nameInspBaseLLD": "C:/AI_Agents/CodeBase/LLD_TEMP2.csv",
+  "SWC_name_HLD": "C:/AI_Agents/CodeBase/DLT_HLD.csv",
+  "lds_file": "C:/AI_Agents/CodeBase/LinkerScript.lds",
+  "map_file": "C:/AI_Agents/CodeBase/MapFile.map",
+  "SWC_name_FUNC_req": "C:/AI_Agents/CodeBase/DLTFuncLLD.csv",
+  "workspace_path": "."
+}
