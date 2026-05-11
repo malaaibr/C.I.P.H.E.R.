@@ -1,8 +1,6 @@
-"""Settings dialog for DevNex GUI."""
+"""Settings dialog for DevNex GUI — Appearance and Paths only."""
 
 from __future__ import annotations
-
-from typing import Callable
 
 from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QTabWidget, QWidget,
@@ -11,30 +9,20 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt
 
 from interfaces.gui.settings_manager import SettingsManager
-from interfaces.gui.constants import NAV_ITEMS, NAV_WORKFLOW, NAV_TRACE, NAV_OUTPUT, NAV_CONFIG
 from interfaces.gui.styles import palette
 
 
-_NAV_META = {
-    NAV_WORKFLOW: {"icon": "⬡", "desc": "V-Cycle canvas · run stages · monitor nodes"},
-    NAV_TRACE:    {"icon": "↻", "desc": "Traceability matrix · LLD → HLD → Code links"},
-    NAV_OUTPUT:   {"icon": "≡", "desc": "Execution log · artifact output stream"},
-    NAV_CONFIG:   {"icon": "⚙", "desc": "SWC config · file paths · pipeline settings"},
-}
-
-
 class SettingsDialog(QDialog):
-    """Tabbed settings dialog — Navigation / Appearance / Paths."""
+    """Tabbed settings dialog — Appearance / Paths."""
 
     def __init__(
         self,
         settings_manager: SettingsManager,
-        on_nav: Callable[[str], None] | None = None,
         parent=None,
     ) -> None:
         super().__init__(parent)
         self.setWindowTitle("DevNex — Settings")
-        self.resize(680, 460)
+        self.resize(560, 340)
         self.setModal(True)
         self.setStyleSheet(
             f"QDialog {{ background: {palette.BG_APP}; color: {palette.TEXT1}; }}"
@@ -48,7 +36,6 @@ class SettingsDialog(QDialog):
             f"QTabBar::tab:hover:!selected {{ background: {palette.BG_CARD}; color: {palette.TEXT1}; }}"
         )
         self.settings_manager = settings_manager
-        self._on_nav = on_nav
         self._build_ui()
         self._load_values()
 
@@ -60,12 +47,10 @@ class SettingsDialog(QDialog):
         root.setSpacing(8)
 
         self._tabs = QTabWidget()
-        self._tabs.addTab(self._build_nav_tab(),        "Navigation")
         self._tabs.addTab(self._build_appearance_tab(), "Appearance")
         self._tabs.addTab(self._build_paths_tab(),      "Paths")
         root.addWidget(self._tabs, stretch=1)
 
-        # Bottom button row (only visible on non-nav tabs)
         btn_row = QWidget()
         bl = QHBoxLayout(btn_row)
         bl.setContentsMargins(0, 0, 0, 0)
@@ -93,103 +78,6 @@ class SettingsDialog(QDialog):
         bl.addWidget(save_btn)
 
         root.addWidget(btn_row)
-        self._btn_row = btn_row
-
-        # Hide bottom buttons when Nav tab is active (nav buttons close the dialog directly)
-        self._tabs.currentChanged.connect(self._on_tab_changed)
-        self._on_tab_changed(0)
-
-    # ── Navigation tab ────────────────────────────────────────────────────────
-
-    def _build_nav_tab(self) -> QWidget:
-        w = QWidget()
-        w.setStyleSheet(f"background: {palette.BG_SIDEBAR};")
-        root = QVBoxLayout(w)
-        root.setContentsMargins(24, 20, 24, 20)
-        root.setSpacing(10)
-
-        heading = QLabel("Switch Panel")
-        heading.setStyleSheet(
-            f"color: {palette.TEXT3}; font-size: 9px; font-family: monospace; "
-            f"letter-spacing: 2.5px;"
-        )
-        root.addWidget(heading)
-
-        for label in NAV_ITEMS:
-            meta = _NAV_META.get(label, {"icon": "·", "desc": ""})
-            btn = self._make_nav_button(label, meta["icon"], meta["desc"])
-            root.addWidget(btn)
-
-        root.addStretch()
-
-        note = QLabel("Click a panel to switch and close this dialog.")
-        note.setStyleSheet(
-            f"color: {palette.TEXT3}; font-size: 9px; font-family: monospace;"
-        )
-        note.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        root.addWidget(note)
-        return w
-
-    def _make_nav_button(self, label: str, icon: str, desc: str) -> QWidget:
-        card = QWidget()
-        card.setFixedHeight(56)
-        card.setCursor(Qt.CursorShape.PointingHandCursor)
-        card.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
-        obj = f"nav_{label.lower()}"
-        card.setObjectName(obj)
-        card.setStyleSheet(
-            f"QWidget#{obj} {{ background: {palette.BG_CARD}; border: 1px solid {palette.BORDER}; "
-            f"border-radius: 6px; }}"
-            f"QWidget#{obj}:hover {{ border-color: {palette.ACCENT}; "
-            f"background: rgba(60,232,200,0.06); }}"
-        )
-
-        hl = QHBoxLayout(card)
-        hl.setContentsMargins(16, 0, 16, 0)
-        hl.setSpacing(14)
-
-        icon_lbl = QLabel(icon)
-        icon_lbl.setFixedWidth(24)
-        icon_lbl.setStyleSheet(
-            f"color: {palette.ACCENT}; font-size: 18px; background: transparent;"
-        )
-        hl.addWidget(icon_lbl)
-
-        text_col = QWidget()
-        text_col.setStyleSheet("background: transparent;")
-        tvl = QVBoxLayout(text_col)
-        tvl.setContentsMargins(0, 0, 0, 0)
-        tvl.setSpacing(2)
-
-        title = QLabel(label)
-        title.setStyleSheet(
-            f"color: {palette.TEXT1}; font-size: 13px; font-weight: bold; "
-            f"background: transparent;"
-        )
-        tvl.addWidget(title)
-
-        desc_lbl = QLabel(desc)
-        desc_lbl.setStyleSheet(
-            f"color: {palette.TEXT3}; font-size: 10px; font-family: monospace; "
-            f"background: transparent;"
-        )
-        tvl.addWidget(desc_lbl)
-        hl.addWidget(text_col, stretch=1)
-
-        arrow = QLabel("›")
-        arrow.setStyleSheet(
-            f"color: {palette.TEXT3}; font-size: 18px; background: transparent;"
-        )
-        hl.addWidget(arrow)
-
-        label_cap = label
-        card.mousePressEvent = lambda _e, lbl=label_cap: self._nav_clicked(lbl)
-        return card
-
-    def _nav_clicked(self, label: str) -> None:
-        if self._on_nav is not None:
-            self._on_nav(label)
-        self.accept()
 
     # ── Appearance tab ────────────────────────────────────────────────────────
 
@@ -235,9 +123,6 @@ class SettingsDialog(QDialog):
         return w
 
     # ── Helpers ───────────────────────────────────────────────────────────────
-
-    def _on_tab_changed(self, idx: int) -> None:
-        self._btn_row.setVisible(idx != 0)
 
     @staticmethod
     def _form_lbl(text: str) -> QLabel:
