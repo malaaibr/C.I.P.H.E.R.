@@ -8,10 +8,9 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QStackedWidget, QPlainTextEdit, QSplitter,
+    QLabel, QPushButton, QStackedWidget, QPlainTextEdit,
     QFrame,
 )
-from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor
 
 from interfaces.gui.constants import (
@@ -165,8 +164,6 @@ class MainWindow(QMainWindow):
         hl.setContentsMargins(16, 0, 12, 0)
         hl.setSpacing(8)
 
-        from PyQt6.QtGui import QIcon
-        from interfaces.gui.icon import make_hex_pixmap
         icon_lbl = QLabel("⬡")
         icon_lbl.setStyleSheet(f"color: {palette.ACCENT}; font-size: 20px;")
         hl.addWidget(icon_lbl)
@@ -417,4 +414,6 @@ class MainWindow(QMainWindow):
         if self._gca_invoker is not None:
             self._gca_invoker.disconnect()
         self._settings.save()
+        from core.file_logger import close_file_logging
+        close_file_logging()
         super().closeEvent(event)
