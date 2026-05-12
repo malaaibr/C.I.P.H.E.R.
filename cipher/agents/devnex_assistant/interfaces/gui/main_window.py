@@ -17,7 +17,7 @@ from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor
 from interfaces.gui.constants import (
     APP_NAME, APP_VERSION,
     WIN_WIDTH, WIN_HEIGHT, WIN_MIN_WIDTH, WIN_MIN_HEIGHT,
-    NAV_WORKFLOW, NAV_TRACE, NAV_OUTPUT, NAV_CONFIG, NAV_ITEMS,
+    NAV_WORKFLOW, NAV_TRACE, NAV_REVIEW, NAV_OUTPUT, NAV_CONFIG,
     ALL_NODE_IDS,
 )
 from interfaces.gui.styles import palette
@@ -27,6 +27,7 @@ from interfaces.gui.settings_dialog import SettingsDialog
 from interfaces.gui.sidebar import Sidebar
 from interfaces.gui.panels.workflow_panel import WorkflowPanel, ReviewDialog
 from interfaces.gui.panels.trace_panel import TracePanel
+from interfaces.gui.panels.review_panel import ReviewPanel
 from interfaces.gui.panels.output_log import OutputLogPanel
 from interfaces.gui.panels.config_panel import ConfigPanel
 
@@ -78,6 +79,7 @@ class MainWindow(QMainWindow):
         self._workers: list = []          # keep references to prevent GC
         self._active_worker = None
         self._orchestrator  = None        # created lazily when first run starts
+        self._gca_invoker   = None        # shared across V-cycle and Review pipelines
 
         from PyQt6.QtGui import QIcon
         from interfaces.gui.icon import make_hex_pixmap
@@ -109,13 +111,15 @@ class MainWindow(QMainWindow):
             artifacts_dir=_DEFAULT_ARTIFACTS_DIR,
             on_open_source=self._open_in_external_editor,
         )
+        self._review_panel   = ReviewPanel()
         self._output_panel   = OutputLogPanel()
         self._config_panel   = ConfigPanel()
 
         self._stack.addWidget(self._workflow_panel)   # 0 → Workflow
         self._stack.addWidget(self._trace_panel)      # 1 → Trace
-        self._stack.addWidget(self._output_panel)     # 2 → Output
-        self._stack.addWidget(self._config_panel)     # 3 → Config
+        self._stack.addWidget(self._review_panel)     # 2 → Review
+        self._stack.addWidget(self._output_panel)     # 3 → Output
+        self._stack.addWidget(self._config_panel)     # 4 → Config
 
         # Sidebar + panel stack side-by-side
         self._sidebar = Sidebar(on_nav=self._on_nav)
@@ -210,12 +214,26 @@ class MainWindow(QMainWindow):
     # ── Navigation ────────────────────────────────────────────────────────────
 
     def _on_nav(self, label: str) -> None:
-        idx_map = {NAV_WORKFLOW: 0, NAV_TRACE: 1, NAV_OUTPUT: 2, NAV_CONFIG: 3}
+        idx_map = {
+            NAV_WORKFLOW: 0,
+            NAV_TRACE:    1,
+            NAV_REVIEW:   2,
+            NAV_OUTPUT:   3,
+            NAV_CONFIG:   4,
+        }
         self._stack.setCurrentIndex(idx_map.get(label, 0))
         self._panel_lbl.setText(f"› {label}")
         self._sidebar.set_active(label)
 
     # ── Worker / run logic ────────────────────────────────────────────────────
+
+    def _get_gca_invoker(self):
+        if self._gca_invoker is None:
+            from gca.vscode_invoker import DevNexGCAInvoker
+            config = self._config_panel.get_config()
+            repo_path = Path(config.get("workspace_path", "."))
+            self._gca_invoker = DevNexGCAInvoker(repo_path=repo_path)
+        return self._gca_invoker
 
     def _get_orchestrator(self):
         if self._orchestrator is None:
@@ -227,6 +245,8 @@ class MainWindow(QMainWindow):
                 workspace_path=config.get("workspace_path", "."),
             )
             self._orchestrator = DevNexOrchestrator(run_context=ctx)
+            # Inject shared GCA invoker so both pipelines reuse one VS Code connection
+            self._orchestrator._gca_invoker = self._get_gca_invoker()
         return self._orchestrator
 
     def _on_node_run_requested(self, node_id: str) -> None:
@@ -394,5 +414,7 @@ class MainWindow(QMainWindow):
         if self._active_worker is not None and self._active_worker.isRunning():
             self._active_worker.quit()
             self._active_worker.wait(2000)
+        if self._gca_invoker is not None:
+            self._gca_invoker.disconnect()
         self._settings.save()
         super().closeEvent(event)
