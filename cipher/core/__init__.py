@@ -1,2 +1,3 @@
-"""Shared CIPHER contracts for the local MVP."""
+"""CIPHER Core — shared SDK with no agent dependencies."""
 
+from __future__ import annotations

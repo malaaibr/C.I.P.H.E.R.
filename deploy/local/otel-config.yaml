@@ -1,0 +1,39 @@
+# CIPHER OTel Collector Configuration
+# WBS Task: T-001 | Layer: DRS/PKL
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+exporters:
+  otlp/langfuse:
+    endpoint: http://langfuse:3000/api/public/otel
+    tls:
+      insecure: true
+  logging:
+    loglevel: info
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [otlp/langfuse, logging]
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [logging]
