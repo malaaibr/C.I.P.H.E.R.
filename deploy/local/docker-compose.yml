@@ -7,7 +7,7 @@
 # Module Type: Driver
 #
 # Services: Redis 7, Memgraph, Qdrant, MinIO, NATS JetStream,
-#           SQLite (host-file), Langfuse, OTel Collector, OPA
+#           SQLite (host-file), OTel Collector, OPA
 ###############################################################################
 
 services:
@@ -29,17 +29,14 @@ services:
 
   # ─── Knowledge Graph ────────────────────────────────────────────────────────
   memgraph:
-    image: memgraph/memgraph-platform:2.18.1
+    image: memgraph/memgraph:2.18.1
     container_name: cipher-memgraph
     ports:
       - "127.0.0.1:7687:7687"
       - "127.0.0.1:7444:7444"
-      - "127.0.0.1:3001:3000"
     volumes:
-      - ./data/memgraph:/var/lib/memgraph
-    environment:
-      MEMGRAPH_USER: ${MEMGRAPH_USER:-}
-      MEMGRAPH_PASSWORD: ${MEMGRAPH_PASSWORD:-}
+      - memgraph_data:/var/lib/memgraph
+    command: ["--also-log-to-stderr"]
     healthcheck:
       test: ["CMD-SHELL", "echo 'RETURN 1;' | mgconsole || exit 1"]
       interval: 10s
@@ -60,7 +57,7 @@ services:
     environment:
       QDRANT__SERVICE__GRPC_PORT: 6334
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -68,7 +65,7 @@ services:
 
   # ─── Artefact Object Store ──────────────────────────────────────────────────
   minio:
-    image: minio/minio:RELEASE.2025-01-01T00-00-00Z
+    image: minio/minio:latest
     container_name: cipher-minio
     ports:
       - "127.0.0.1:9000:9000"
@@ -80,7 +77,7 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cipherdev123}
     command: server /data --console-address ":9001"
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -128,50 +125,25 @@ services:
     volumes:
       - ./otel-config.yaml:/etc/otelcol-contrib/config.yaml:ro
     command: ["--config", "/etc/otelcol-contrib/config.yaml"]
-    depends_on:
-      langfuse:
-        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:13133/healthz || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-    restart: unless-stopped
-
-  # ─── Observability — Langfuse ───────────────────────────────────────────────
-  langfuse:
-    image: langfuse/langfuse:latest
-    container_name: cipher-langfuse
-    ports:
-      - "127.0.0.1:3000:3000"
-    environment:
-      DATABASE_URL: "file:./data/langfuse.db"
-      NEXTAUTH_URL: "http://localhost:3000"
-      NEXTAUTH_SECRET: ${LANGFUSE_SECRET:-cipher-dev-secret-change-me}
-      SALT: ${LANGFUSE_SALT:-cipher-dev-salt}
-      TELEMETRY_ENABLED: "false"
-    volumes:
-      - ./data/langfuse:/app/data
-    healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/public/health || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      disable: true
     restart: unless-stopped
 
   # ─── Governance — OPA Sidecar ───────────────────────────────────────────────
   opa:
-    image: openpolicyagent/opa:0.62.1-static
+    image: openpolicyagent/opa:0.62.1
     container_name: cipher-opa
     ports:
       - "127.0.0.1:8181:8181"
     volumes:
       - ./policies:/policies:ro
-    command: run --server --addr :8181 /policies
+    command: run --server --addr :8181 --diagnostic-addr :8282 /policies
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- http://localhost:8181/health || exit 1"]
+      test: ["CMD", "/opa", "eval", "true"]
       interval: 5s
       timeout: 3s
       retries: 5
     restart: unless-stopped
+
+volumes:
+  memgraph_data:

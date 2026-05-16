@@ -15,10 +15,6 @@ processors:
     send_batch_size: 1024
 
 exporters:
-  otlp/langfuse:
-    endpoint: http://langfuse:3000/api/public/otel
-    tls:
-      insecure: true
   logging:
     loglevel: info
 
@@ -32,7 +28,7 @@ service:
     traces:
       receivers: [otlp]
       processors: [batch]
-      exporters: [otlp/langfuse, logging]
+      exporters: [logging]
     metrics:
       receivers: [otlp]
       processors: [batch]
