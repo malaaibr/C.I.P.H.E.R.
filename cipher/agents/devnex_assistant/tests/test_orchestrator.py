@@ -35,7 +35,11 @@ class TestDevNexOrchestrator(unittest.TestCase):
     def tearDown(self):
         import shutil
         if self.run_dir.exists():
-            shutil.rmtree(self.run_dir)
+            try:
+                shutil.rmtree(self.run_dir)
+            except (PermissionError, OSError):
+                # FUSE-mounted filesystems may disallow rmdir — tests still pass
+                pass
 
     def test_run_node_unknown_id_raises(self):
         from core.errors import NodeExecutionError

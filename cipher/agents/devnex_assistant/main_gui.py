@@ -14,18 +14,24 @@ def main() -> None:
         print("[ERROR] PyQt6 not installed. Run: pip install PyQt6>=6.6.0")
         sys.exit(1)
 
+    # Start file logging before anything else so every print() is captured
+    from core.file_logger import setup_file_logging, close_file_logging
+    log_path = setup_file_logging()
+    print(f"[DevNex] Session log: {log_path}")
+
     from interfaces.gui.app import launch_app
 
     app = QApplication(sys.argv)
     app.setApplicationName("DevNex Assistant")
     app.setOrganizationName("DevNex")
 
-    # Set the hex logo as the application-wide icon (taskbar + Alt-Tab)
     from PyQt6.QtGui import QIcon
     from interfaces.gui.icon import make_hex_pixmap
     app.setWindowIcon(QIcon(make_hex_pixmap(256)))
 
-    sys.exit(launch_app(app))
+    exit_code = launch_app(app)
+    close_file_logging()
+    sys.exit(exit_code)
 
 
 if __name__ == "__main__":

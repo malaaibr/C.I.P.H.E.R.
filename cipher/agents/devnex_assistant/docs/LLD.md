@@ -1,376 +1,526 @@
 # DevNex Assistant Low-Level Design
 
+> **Document revision:** Sprint 0 complete (2026-05-16) — incorporates gap fixes F-001 … F-010,
+> UC 3.1 ASIL Code Review, UC 4.1 Standards Q&A, UC 4.4 RAM Overlap Detection,
+> and all supporting infrastructure changes.
+
+---
+
 ## 1. Class Catalog
 
-### `NodeResult`
+### 1.1 Core — Orchestration
 
-- File: `cipher/agents/devnex_assistant/core/orchestrator.py:23-28`
-- Type: dataclass
-- Responsibility: Carries a node execution result.
-- Attributes:
-  - `node_id: str`
-  - `status: str`
-  - `output: str`
-  - `artifacts: list[str]`
-  - `errors: list[str]`
+#### `NodeResult`
+- **File:** `core/orchestrator.py`
+- **Type:** `dataclass`
+- **Responsibility:** Immutable result record emitted by every node handler.
+- **Attributes:**
+  - `node_id: str` — V-cycle node identifier (e.g. `"S1N1"`)
+  - `status: str` — `"complete"` | `"aborted"` | `"error"`
+  - `output: str` — raw LLM response or human-review message
+  - `artifacts: list[str]` — paths of files written by this node
+  - `errors: list[str]` — non-fatal warnings collected during execution
 
-### `DevNexOrchestrator`
+#### `DevNexOrchestrator`
+- **File:** `core/orchestrator.py`
+- **Responsibility:** Central V-cycle pipeline coordinator. Owns all 13 node handlers plus UC extensions.
+- **Stateful attributes:**
 
-- File: `cipher/agents/devnex_assistant/core/orchestrator.py:31-532`
-- Responsibility: Coordinates V-cycle node execution.
-- Stateful attributes:
-  - `run_context`
-  - `on_log`
-  - `on_node_started`
-  - `on_node_complete`
-  - `on_human_review`
-  - `progress_callback`
-  - `state_store`
-  - `config_store`
-  - `config`
-  - `_gca_invoker`
-  - `_artifacts_dir`
-- Key methods:
-  - `__init__()` loads config and prepares artifact directory.
-  - `gca_invoker` lazily creates `DevNexGCAInvoker`.
-  - `_trace()` writes structured console and GUI callback logs.
-  - `run_node(node_id)` validates node ID, dispatches handler, persists node status.
-  - `run_all(progress_callback)` executes all supported nodes sequentially.
-  - `_run_s1n1()` builds LLD generation prompt, embeds input file contents, invokes GCA, writes LLD CSV.
-  - `_run_s1n2_review()` waits for Requirements Management upload approval.
-  - `_run_s1n3_review()` waits for ID extraction approval.
-  - `_run_s1n4()` categorizes LLD requirements and writes functional requirements CSV.
-  - `_run_s2n1()` embeds requirement references into source and writes annotated source.
-  - `_run_s2n2_review()` waits for annotated source review.
-  - `_run_s3n1()` creates LLD-to-code traceability CSV.
-  - `_run_s4n1()` creates HLD-to-LLD links JSON.
-  - `_run_s5n1()` creates downstream HLD/LLD/code matrix.
-  - `_run_s6n1()` creates test artifacts and waits for test execution approval.
-  - `_run_s7n1()` parses `.tst` files through GCA and writes UTD markdown.
-  - `_run_s8n1()` links UTD test cases to LLD requirements.
-  - `_run_s9n1()` creates final full traceability matrix.
-  - `_validate_config()` raises `ConfigValidationError` if keys are missing.
-  - `_load_prompt()` reads prompt templates or returns fallback text.
-  - `_render_prompt()` replaces `{{KEY}}` placeholders.
-  - `_default_human_review()` blocks for CLI input.
-- Side effects: file reads/writes, state writes, console logs, GCA calls, CLI input.
+  | Attribute | Type | Initialised | Purpose |
+  |---|---|---|---|
+  | `run_context` | `DevNexRunContext` | `__init__` | Run metadata and artifact root |
+  | `on_log` | `Callable` | `__init__` | Callback for structured log lines |
+  | `on_node_started` | `Callable` | `__init__` | Callback fired before each node |
+  | `on_node_complete` | `Callable` | `__init__` | Callback fired after each node |
+  | `on_human_review` | `Callable` | `__init__` | Callback/gate for human approval |
+  | `progress_callback` | `Callable\|None` | `__init__` | Optional progress reporting |
+  | `state_store` | `StateStore` | `__init__` | Persists node statuses |
+  | `config_store` | `ConfigStore` | `__init__` | Reads/writes project config |
+  | `config` | `dict` | `__init__` via `ConfigStore.load()` | Active config snapshot |
+  | `_gca_invoker` | `DevNexGCAInvoker\|None` | Lazy — first `gca_invoker` access | GCA/VS Code bridge |
+  | `_artifacts_dir` | `Path` | `__init__` | Root for all node output files |
+  | `_ruleset` | `dict\|None` | `_load_ruleset()` on demand | Critical-glob and gate config |
 
-### `DevNexRunContext`
+- **Key methods (Sprint 0 additions shown with ★):**
 
-- File: `cipher/agents/devnex_assistant/core/run_context.py:12-32`
-- Type: Pydantic `BaseModel`
-- Responsibility: Stores run ID, start time, SWC name, workspace path, and run artifact root.
-- Methods:
-  - `set_default_run_dir()` sets `~/.devnex/runs` when `run_dir` is missing.
-  - `get_artifacts_path()` returns `run_dir / run_id`.
+  | Method | Description |
+  |---|---|
+  | `gca_invoker` (property) | Lazy-creates `DevNexGCAInvoker`; pre-seed `_gca_invoker` in tests to bypass WebSocket import |
+  | `run_node(node_id)` | Dispatches to `_run_s*N*()` handler; raises `NodeExecutionError` for unknown IDs |
+  | `run_all(progress_callback)` | Sequential S1N1→S9N1 pipeline |
+  | `run_workflow(workflow_path, inputs)` ★ | F-008 — bridges `WorkflowEngine` for AF.json graph execution |
+  | `_invoke_with_retry(prompt, files, node_id)` ★ | F-002 — retries GCA up to `config["max_gca_retries"]` (default 3); raises `NodeExecutionError` after all attempts |
+  | `_run_s1n1()` | LLD generation; validates config (F-010 workspace check); raises `ArtifactMissingError` if any input file absent (F-005) |
+  | `_run_s1n2_review()` | Human gate — RM upload approval |
+  | `_run_s1n3_review()` | Human gate — ID extraction approval |
+  | `_run_s1n4()` | Requirement categorisation; loads `categorize_reqs_v1.md` (F-006); raises `ArtifactMissingError` if `SWC_nameInspBaseLLD` missing (F-005) |
+  | `_run_s2n1()` | Code-linking stage |
+  | `_run_s2n2_review()` | Human gate — annotated source review |
+  | `_run_s3n1()` | Writes **`LLD_Code_Trace_Matrix.csv`** (F-001); loads `lld_code_trace_v1.md` (F-007) |
+  | `_run_s4n1()` | Writes **`HLD_LLD_Trace_Matrix.csv`** (F-001); loads `hld_lld_links_v1.md` (F-007) |
+  | `_run_s5n1()` | Writes **`Full_Downstream_Trace.csv`** (F-001) |
+  | `_run_s6n1()` through `_run_s9n1()` | Testing, UTD, final traceability nodes |
+  | `_load_ruleset()` ★ | F-009 — reads `configs/ruleset.yaml`; returns empty dict on missing file |
+  | `_enforce_critical_globs()` ★ | F-009 — warns (does not raise) when workspace lacks files matching `critical_globs` patterns; uses `pattern.removeprefix("**/")` to extract the rglob suffix correctly |
+  | `_validate_config(keys)` | Raises `ConfigValidationError` on empty/missing keys |
+  | `_load_prompt(filename)` | Reads `prompts/{filename}`; returns `[not found]` fallback |
+  | `_render_prompt(template, context)` | Replaces `{{KEY}}` placeholders |
+  | `_default_human_review(node_id, message)` | Blocks on `input()` for CLI; catches `EOFError` and returns `False` |
 
-### `WorkflowEngine`
+- **Bug fix in Sprint 0:**
+  `_enforce_critical_globs` previously called `workspace.rglob(pattern.lstrip("**/"))`.
+  `str.lstrip` treats its argument as a *character set*, so `"**/*.c".lstrip("**/")` stripped
+  `*`, `/` characters producing `".c"` — matching nothing.
+  Fixed to `pattern.removeprefix("**/")` which strips the two-char-slash prefix as a string,
+  yielding `"*.c"`.
 
-- File: `cipher/agents/devnex_assistant/core/workflow_engine.py:18-154`
-- Responsibility: Executes AF.json workflow graphs.
-- Methods:
-  - `execute(workflow_path, inputs)` loads JSON, topologically sorts nodes, executes each node by `serviceId`, returns last LLM response.
-  - `_topological_sort(graph)` applies Kahn's algorithm to `sourceHandle == "next"` edges.
-  - `_resolve_templates(data, outputs, inputs)` replaces `{{node.output.port}}` references.
-  - `_default_human_review()` uses CLI input.
-- Side effects: reads workflow JSON, runs subprocesses, calls GCA bridge, prompts user.
+---
 
-### Context and Intent Classes
+#### `DevNexRunContext`
+- **File:** `core/run_context.py`
+- **Type:** Pydantic `BaseModel`
+- **Attributes:** `run_id`, `start_time`, `swc_name`, `workspace_path`, `run_dir`
+- **Methods:**
+  - `set_default_run_dir()` — sets `~/.devnex/runs` when `run_dir` is absent
+  - `get_artifacts_path()` — returns `run_dir / run_id`
+  - `validate_workspace()` ★ — F-010: raises `ConfigValidationError` if `workspace_path`
+    does not exist or is not a directory; called from `_run_s1n1()`
+- **Python 3.10 compat note:** `datetime.UTC` was introduced in Python 3.11.
+  Module uses `try: from datetime import UTC except ImportError: UTC = timezone.utc`.
 
-- `WorkingContext`, `core/context_manager.py:17-23`: dataclass containing workflow state, config, workspace path, interface type, active file, and selection.
-- `ContextManager`, `core/context_manager.py:26-52`: loads `StateStore` and `ConfigStore`, builds `WorkingContext`.
-- `ParsedIntent`, `core/intent_classifier.py:16-21`: dataclass containing intent type, stage, skill ID, entities, and confidence.
-- `IntentClassifier`, `core/intent_classifier.py:49-85`: regex-based classifier over `_RULES`.
-- `SkillRegistry`, `core/skill_registry.py:13-49`: mutable registry of skill IDs to skill instances.
+---
 
-### Persistence Classes
+#### `WorkflowEngine`
+- **File:** `core/workflow_engine.py`
+- **Responsibility:** AF.json graph executor.
+- **Supported `serviceId` values:**
 
-- `ConfigStore`, `persistence/config_store.py:25-42`
-  - `load()` reads JSON config, merges it over `DEFAULT_CONFIG`, returns defaults on missing file or invalid JSON.
-  - `save(config)` creates parent directories and writes JSON.
-- `StateStore`, `persistence/state_store.py:11-39`
-  - `load()` reads workflow state JSON, returns `{}` on missing or invalid JSON.
-  - `save(state)` writes JSON.
-  - `set_node_status(node_id, status)` mutates `node_statuses`.
-  - `get_node_statuses()` returns saved node status map.
-  - `reset()` writes `{}`.
-- `ArtifactWriter`, `persistence/artifact_writer.py:14-44`
-  - `write_text()`, `write_json()`, `read_text()` are generic helpers. Current orchestrator writes artifacts directly instead.
+  | serviceId | Behaviour |
+  |---|---|
+  | `logic.internal` | no-op (start/end nodes) |
+  | `extension.llm.sendPrompt` | calls `gca_bridge.send_prompt(prompt, files)` |
+  | `atomic.executionService` | `subprocess.run([script] + args)` |
+  | `logic.humanReview` | calls `on_human_review(node_id, data)`; raises `WorkflowAbortedError` on rejection |
 
-### GCA Integration Classes
+- **Methods:**
+  - `execute(workflow_path, inputs)` — topological-sort → dispatch → return last LLM response
+  - `_topological_sort(graph)` — Kahn's algorithm on `sourceHandle == "next"` edges
+  - `_resolve_templates(data, outputs, inputs)` — replaces `{{nodeId.output.portId}}`
+  - `_default_human_review(node_id, data)` — CLI `input()` fallback
 
-- `DevNexBridge`, `gca/bridge.py:20-88`
-  - `send_prompt(prompt, attached_files)` posts to `http://127.0.0.1:37778/sendPrompt`.
-  - `is_available()` checks `/health`.
-  - Raises `GCANotAvailableError` for connection failure and `GCABridgeError` for HTTP/empty/timeout/general errors.
-- `GCAInvocationResult`, `gca/vscode_invoker.py:38-44`
-  - Fields: `raw_response`, `is_response_valid`, `started_vscode_window`.
-- `_DirectGCAClient`, `gca/vscode_invoker.py:49-114`
-  - Owns WebSocket connection.
-  - Sends commands: `gca.resetChat`, `vscode.closeAllFiles`, `vscode.openFile`, `gca.addFileToContext`, `gca.sendPrompt`.
-  - Retries prompt sends and raises `RuntimeError` when no response is returned.
-- `DevNexGCAInvoker`, `gca/vscode_invoker.py:169-331`
-  - Creates isolated temporary VS Code workspace.
-  - Launches VS Code.
-  - Polls `~/.gca_instances.json`.
-  - Connects WebSocket.
-  - Falls back to HTTP bridge if registry/WebSocket flow fails.
+---
 
-### Skill Classes
+### 1.2 Core — Context and Intent
 
-- `ISkill`, `skills/base_skill.py:8-28`: abstract base with injected `orchestrator`.
-- `LLDGenSkill`, `skills/lld_gen_skill.py:25-52`: maps Stage 1 intents to `S1N1`, `S1N2`, `S1N3`, or `S1N4`.
-- `CodeLinkSkill`, `skills/code_link_skill.py:25-51`: maps Stage 2 intents to `S2N1` or `S2N2`.
-- `TraceReportSkill`, `skills/trace_report_skill.py:25-51`: maps Stage 3-5 intents to `S3N1`, `S4N1`, or `S5N1`.
-- `TestGenSkill`, `skills/test_gen_skill.py:25-51`: maps Stage 6-8 intents to `S6N1`, `S7N1`, or `S8N1`.
-- `FullTraceSkill`, `skills/full_trace_skill.py:25-49`: always runs `S9N1`.
-- Each concrete skill returns its local `TaskResult` dataclass.
+#### `ParsedIntent`
+- **File:** `core/intent_classifier.py`
+- **Type:** `dataclass`
+- **Attributes:** `intent_type`, `vcycle_stage`, `skill_id`, `entities: list[str]`, `confidence: float`
 
-### GUI Classes
+#### `IntentClassifier`
+- **File:** `core/intent_classifier.py`
+- **Sprint 0 fixes (F-003, F-004):**
+  - `S1N[23]` combined regex split into two separate rules so `S1N3` maps to `vcycle_stage="S1N3"` not `"S1N2"`.
+  - Added `free_form` fallback rule (skill_id `"free_form"`, type `FREE_FORM`).
+  - Added `asil_review` trigger: `r"asil\s+review|code\s+review.*asil|uc\s*3\.1"`.
+  - Added `standards_qa` trigger: `r"standards?\s+q|iso\s+262|misra|uc\s*4\.1"`.
+  - Added `uc4_4` trigger: `r"uc\s*4\.4|memory\s+overlap|semantic\s+conflict"`.
 
-- `MainWindow`, `interfaces/gui/main_window.py:61-356`: primary window, lazy orchestrator owner, worker coordinator, log mirror, status updater.
-- `ConfigInitModal`, `interfaces/gui/config_init_modal.py:47-399`: first-run/returning-user configuration modal.
-- `SettingsManager`, `interfaces/gui/settings_manager.py:10-68`: JSON settings storage at `~/.devnex/gui_settings.json`.
-- `SettingsDialog`, `interfaces/gui/settings_dialog.py:26-273`: settings and navigation dialog.
-- `SplashScreen`, `interfaces/gui/splash.py:45-363`: animated splash screen.
-- `StepIndicator`, `interfaces/gui/step_indicator.py:42-169`: stage state visualization.
-- `ConfigPanel`, `interfaces/gui/panels/config_panel.py:29-142`: config form bound to `ConfigStore`.
-- `OutputLogPanel`, `interfaces/gui/panels/output_log.py:11-65`: read-only colored log tab.
-- `TracePanel`, `interfaces/gui/panels/trace_panel.py:25-120`: traceability tree UI and latest artifact lookup.
-- `VCycleCanvas`, `interfaces/gui/panels/workflow_panel.py:150-608`: custom-painted V-cycle canvas.
-- `WorkflowPanel`, `interfaces/gui/panels/workflow_panel.py:615-949`: workflow sidebar/detail strip, emits node/run/reset signals.
-- `ReviewDialog`, `interfaces/gui/panels/workflow_panel.py:956-1046`: modal Continue/Abort gate.
-- `BaseWorker`, `interfaces/gui/workers/base_worker.py:9-55`: generic QThread execution template.
-- `NodeWorker`, `interfaces/gui/workers/node_worker.py:13-66`: runs one node in a worker thread.
-- `FullRunWorker`, `interfaces/gui/workers/full_run_worker.py:13-65`: runs full pipeline in a worker thread.
+#### `SkillRegistry`
+- **File:** `core/skill_registry.py`
+- **Sprint 0 (F-004):** `build_default()` now registers:
+  - `"explain"` → `ExplainSkill`
+  - `"free_form"` → `FreeFormSkill`
+  - `"asil_review"` → `AsilReviewSkill`
+  - `"standards_qa"` → `StandardsQASkill`
+  - (plus the original 5 stage-mapped skills)
+
+---
+
+### 1.3 Core — Errors
+
+**File:** `core/errors.py`
+
+| Exception | Inherits | Raised When |
+|---|---|---|
+| `DevNexError` | `Exception` | Base class |
+| `NodeExecutionError` | `DevNexError` | Unknown node ID; GCA exhausted all retries (F-002) |
+| `WorkflowAbortedError` | `DevNexError` | Human review rejected |
+| `ConfigValidationError` | `DevNexError` | Missing/empty required config key; invalid workspace path (F-010) |
+| `ArtifactMissingError` | `DevNexError` | Required input file absent at node start (F-005) |
+| `SemanticConflictError` | `DevNexError` | ASIL-D hard block — critical violations in code review (UC 3.1) |
+
+---
+
+### 1.4 Core — Logging
+
+**File:** `core/console_logging.py`
+
+- `utc_timestamp()` — UTC string `YYYY-MM-DDTHH:MM:SSZ`
+- `format_console_log(module, level, message, timestamp, function_name)` — ANSI-coloured structured log line; degrades gracefully when stdout is not a TTY
+- `_supports_color()` — checks `NO_COLOR` / `FORCE_COLOR` env vars and Windows VT mode
+- **Python 3.10 compat:** `try: from datetime import UTC except ImportError: UTC = timezone.utc`
+
+---
+
+### 1.5 Persistence
+
+#### `ConfigStore` — `persistence/config_store.py`
+- `load()` — reads `generated_artifacts/config.json`; merges over `DEFAULT_CONFIG`; returns defaults on missing/invalid JSON
+- `save(config)` — creates parent dirs and writes JSON
+
+#### `StateStore` — `persistence/state_store.py`
+- `load()` / `save(state)` — JSON at `~/.devnex/workflow_state.json`
+- `set_node_status(node_id, status)` — unlocked read-modify-write (known risk: no file lock)
+- `get_node_statuses()`, `reset()`
+
+#### `ArtifactWriter` — `persistence/artifact_writer.py`
+- Generic `write_text()`, `write_json()`, `read_text()` helpers
+- Note: orchestrator writes artifacts directly rather than through this helper
+
+---
+
+### 1.6 GCA Integration
+
+#### `DevNexBridge` — `gca/bridge.py`
+- `send_prompt(prompt, attached_files)` → `POST http://127.0.0.1:37778/sendPrompt`
+- `is_available()` → `GET /health`
+- Raises `GCANotAvailableError` on connection failure; `GCABridgeError` on HTTP/empty/timeout errors
+
+#### `GCAInvocationResult` — `gca/vscode_invoker.py`
+- `raw_response: str`, `is_response_valid: bool`, `started_vscode_window: bool`
+
+#### `_DirectGCAClient` — `gca/vscode_invoker.py`
+- Owns WebSocket lifecycle
+- Commands: `gca.resetChat`, `vscode.closeAllFiles`, `vscode.openFile`, `gca.addFileToContext`, `gca.sendPrompt`
+
+#### `DevNexGCAInvoker` — `gca/vscode_invoker.py`
+- Creates isolated temp VS Code workspace
+- Polls `~/.gca_instances.json`; connects WebSocket
+- Falls back to HTTP bridge on registry/WebSocket failure
+- **Test note:** lazy import of `websocket` module occurs in `gca_invoker` property.
+  In unit tests, pre-seed `orch._gca_invoker = MagicMock()` to bypass the import.
+
+---
+
+### 1.7 Skills Layer
+
+#### Base
+
+| Class | File | Description |
+|---|---|---|
+| `ISkill` | `skills/base_skill.py` | Abstract base; injected `orchestrator` |
+| `TaskResult` | per-skill | Dataclass carrying `success`, `output`, `artifacts` |
+
+#### Original V-Cycle Skills
+
+| Skill | Maps To Nodes |
+|---|---|
+| `LLDGenSkill` | S1N1, S1N2, S1N3, S1N4 |
+| `CodeLinkSkill` | S2N1, S2N2 |
+| `TraceReportSkill` | S3N1, S4N1, S5N1 |
+| `TestGenSkill` | S6N1, S7N1, S8N1 |
+| `FullTraceSkill` | S9N1 |
+
+#### Sprint 0 New Skills
+
+##### `ExplainSkill` — `skills/explain_skill.py`
+- Intent trigger: `EXPLAIN`
+- Builds a one-shot GCA prompt: "Explain `{target}` in the context of SWC `{swc}`"
+- Returns `GCAInvocationResult.raw_response`
+
+##### `FreeFormSkill` — `skills/free_form_skill.py`
+- Intent trigger: `FREE_FORM` (fallback for unmatched input)
+- Prepends a CIPHER DevNex system header then forwards the raw prompt to GCA
+
+##### `AsilReviewSkill` — `skills/automotive/asil_review_skill.py` (UC 3.1)
+- **Three-phase pipeline:** Ollama TRIAGE → Gemini CLI PLAN → GCA CODE_GEN
+- **Key dataclasses:**
+  - `AsilViolation`: `file`, `line`, `rule`, `severity` (CRITICAL|MAJOR|MINOR), `description`, `fix_hint`, `fixed: bool`
+  - `AsilReviewReport`: `source_file`, `asil_target`, `total_violations`, `critical_count`, `major_count`, `minor_count`, `violations`, `fix_diffs`, `gate_decision`, `compliance_badge`, `rationale`
+- **MISRA-C:2012 mandatory rules enforced:** R1.3, R11.3, R11.8, R14.4, R15.5, R17.7, R21.3
+- **ASIL gate decisions:**
+
+  | ASIL | Has Criticals | Decision | Gate |
+  |---|---|---|---|
+  | D | Yes | `HARD_BLOCK` — raises `SemanticConflictError` | G5 |
+  | C | Yes | `HOLD` | G5 |
+  | B | Yes | `HOLD` | G4 |
+  | A / QM | Any | `WARN` | G3 |
+  | Any | No | `PASS` | — |
+
+- **Artifacts written:** `asil_review_{stem}.json`, `asil_review_{stem}.md`
+- **GCA response parsing:** splits on `"---DIFF---"` separator for fix diffs
+
+##### `StandardsQASkill` — `skills/automotive/standards_qa_skill.py` (UC 4.1)
+- **Hybrid RAG:** BM25 (sparse) + Qdrant (dense)
+- **`HybridRetriever`:**
+  - `_bm25_search(query)` — `rank_bm25.BM25Okapi` or naive TF fallback
+  - `_dense_search(query)` — Qdrant REST `/collections/{index}/points/search`
+  - `_embed_query(query)` — Ollama `/api/embeddings` (model: `nomic-embed-text`)
+  - `retrieve(query, index_key, top_k)` — merges by `doc_id`; `hybrid_score = alpha×dense + (1-alpha)×bm25`; `DEFAULT_ALPHA = 0.7`, `DEFAULT_TOP_K = 5`
+  - `_qdrant_ok: bool | None` — tracks availability; falls back gracefully to BM25-only
+- **`SourceChunk`:** `doc_id`, `text`, `source`, `dense_score`, `bm25_score`, `hybrid_score`
+- **`QAAnswer`:** `question`, `answer`, `sources: list[SourceChunk]`, `index_used`, `top_k`
+- **Supported index keys:** `"iso26262"`, `"misra_c"`, `"autosar"`, `"codebase"`
+- **`answer(question, scope_filter)` flow:** retrieve chunks → build context → Ollama `/api/generate` → `QAAnswer`; `_fallback_answer()` when no docs indexed
+
+---
+
+### 1.8 UC 4.4 — RAM Overlap Detection
+
+All files under `skills/uc4_4/`.
+
+#### `MapAnalyzer` — `map_analyzer.py`
+- Parses GNU linker `.map` files into `SectionLayout` records: `name`, `vma`, `lma`, `size`, `alignment`
+- `parse(map_path)` → `list[SectionLayout]`
+- `write_json(sections, out_path)` — atomic write via temp-file + rename
+- `get_ram_sections()` — filters to sections with RAM-range VMAs
+
+#### `RamOverlapDetector` — `ram_overlap_detector.py`
+- `detect(sections)` → `list[OverlapResult]` — interval-intersection algorithm
+- `OverlapResult`: `section_a`, `section_b`, `overlap_start`, `overlap_end`, `overlap_bytes`, `asil_level`, `action`
+- **ASIL action table:**
+
+  | ASIL | Action |
+  |---|---|
+  | D | `HARD_BLOCK` — raises `SemanticConflictError` via `AsilGate.enforce()` |
+  | C | `HOLD` |
+  | B | `HOLD` |
+  | A / QM | `WARN` |
+
+#### `LinkerScriptParser` — `linker_script_parser.py`
+- Parses GNU `.ld` linker scripts for `MEMORY { }` regions
+- `MemoryRegion`: `name`, `origin`, `length`, `attrs`
+- `is_ram(region)`, `is_flash(region)` — attribute-based classification
+
+#### `AsilGate` — `asil_gate.py`
+- `evaluate(asil_level, has_overlap)` → `GateDecision`: `decision` (HARD_BLOCK/HOLD/WARN/PASS), `gate` (G1–G5), `requires_safety_engineer: bool`
+- `enforce(asil_level, overlap_results)` — raises `SemanticConflictError` for ASIL-D with overlaps
+- Gate G5 assigned to ASIL-D; G4 to ASIL-C; G3 to ASIL-A/B/QM
+
+---
+
+### 1.9 Configuration
+
+#### `configs/ruleset.yaml` ★ (F-009)
+```yaml
+version: "1.0"
+critical_globs:
+  - "**/*.c"
+  - "**/*.h"
+  - "**/*.ld"
+  - "**/*.map"
+exempt_patterns:
+  - "generated_artifacts/**"
+  - "build/**"
+  - ".venv/**"
+asil_gated_nodes:
+  - S1N1
+  - S6N1
+  - S9N1
+  - UC4_4
+max_gca_retries: 3
+```
+
+---
+
+### 1.10 Prompt Templates
+
+| File | Used By | Sprint |
+|---|---|---|
+| `prompts/lld_gen_v1.md` | S1N1 | Pre-Sprint 0 |
+| `prompts/code_link_v1.md` | S2N1 | Pre-Sprint 0 |
+| `prompts/full_trace_v1.md` | S9N1 | Pre-Sprint 0 |
+| `prompts/categorize_reqs_v1.md` ★ | S1N4 (F-006) | Sprint 0 |
+| `prompts/lld_code_trace_v1.md` ★ | S3N1 (F-007) | Sprint 0 |
+| `prompts/hld_lld_links_v1.md` ★ | S4N1 (F-007) | Sprint 0 |
+
+---
 
 ## 2. Standalone Function Catalog
 
-| Function | File | Role | Side Effects |
-| --- | --- | --- | --- |
-| `cli()` | `devnex.py:14` | Click root command. | CLI registration. |
-| `_pixmap_to_pil()` | `generate_icon.py:23` | Converts Qt pixmap to PIL image. | Buffer operations. |
-| `generate()` | `generate_icon.py:35` | Writes icon assets. | File writes under `assets/`. |
-| `main()` | `main_gui.py:10` | GUI script entry. | Creates app, exits process. |
-| `_try_enable_windows_vt_mode()` | `core/console_logging.py:25` | Enables ANSI mode on Windows. | `ctypes` console call. |
-| `_supports_color()` | `core/console_logging.py:51` | Determines color support. | Reads env vars. |
-| `_colorize_path_segments()` | `core/console_logging.py:66` | Adds ANSI color to quoted paths. | None. |
-| `_level_color()` | `core/console_logging.py:85` | Maps level to color. | None. |
-| `utc_timestamp()` | `core/console_logging.py:103` | Returns UTC timestamp. | None. |
-| `format_console_log()` | `core/console_logging.py:112` | Formats structured log line. | None. |
-| `_read_registry_ids()` | `gca/vscode_invoker.py:119` | Reads GCA registry IDs. | File read. |
-| `_is_port_open()` | `gca/vscode_invoker.py:129` | Checks localhost port. | Socket connect. |
-| `_wait_and_connect()` | `gca/vscode_invoker.py:139` | Polls registry and opens WebSocket. | File read, socket/WebSocket. |
-| `_make_orchestrator()` | `interfaces/cli/cli_commands.py:13` | Creates run context and orchestrator. | Config/artifact initialization. |
-| `build_cli()` | `interfaces/cli/cli_commands.py:20` | Builds Click group. | Defines nested commands. |
-| `_run_single()` | `interfaces/cli/cli_commands.py:83` | Runs one node and prints result. | CLI output, process exit on error. |
-| `launch_app()` | `interfaces/gui/app.py:6` | Starts GUI sequence. | UI creation/event loop. |
-| `make_hex_pixmap()` | `interfaces/gui/icon.py:14` | Draws app icon pixmap. | Qt painting. |
-| `_hex_path()` | `interfaces/gui/icon.py:72` | Draws hex path. | Qt painting. |
-| `_infer_level()` | `interfaces/gui/main_window.py:47` | Infers log level from text. | None. |
+| Function | File | Role |
+|---|---|---|
+| `cli()` | `devnex.py` | Click root command |
+| `main()` | `main_gui.py` | PyQt6 entry point |
+| `utc_timestamp()` | `core/console_logging.py` | UTC timestamp string |
+| `format_console_log()` | `core/console_logging.py` | Structured ANSI log line |
+| `_try_enable_windows_vt_mode()` | `core/console_logging.py` | Windows ANSI console enable |
+| `load_trace_graph(artifacts_dir)` | `core/trace_loader.py` | Builds `TraceGraph` from JSON or CSVs |
+| `emit_trace_json(artifacts_dir)` | `core/trace_loader.py` | Writes `trace_graph.json` atomically |
+| `_make_orchestrator()` | `interfaces/cli/cli_commands.py` | Creates `DevNexRunContext` + orchestrator |
+| `build_cli()` | `interfaces/cli/cli_commands.py` | Builds Click command group |
+| `launch_app()` | `interfaces/gui/app.py` | GUI bootstrap sequence |
 
-## 3. Main Call Graphs
+---
+
+## 3. Artifact Filename Contract (F-001)
+
+The canonical output names are enforced so `trace_loader._CSV_MAP` can locate them without config:
+
+| Node | Old (pre-Sprint 0) | Canonical (Sprint 0) |
+|---|---|---|
+| S3N1 | `LLD_Code_Trace_Report.csv` | **`LLD_Code_Trace_Matrix.csv`** |
+| S4N1 | `HLD_LLD_Links.json` | **`HLD_LLD_Trace_Matrix.csv`** |
+| S5N1 | `HLD_LLD_Code_Trace_Matrix.csv` | **`Full_Downstream_Trace.csv`** |
+
+`trace_loader._CSV_MAP` keys match these canonical names exactly.
+
+---
+
+## 4. Main Call Graphs
 
 ### CLI Single Stage
-
-```text
-devnex.cli()
-  -> build_cli()
-    -> run_stage(stage)
-      -> _run_single(stage)
-        -> _make_orchestrator()
-          -> DevNexRunContext()
-          -> DevNexOrchestrator.__init__()
-            -> ConfigStore.load()
-            -> DevNexRunContext.get_artifacts_path()
-        -> DevNexOrchestrator.run_node(stage)
-          -> selected _run_s*N*()
-          -> StateStore.set_node_status()
+```
+devnex.cli() → build_cli() → run_stage()
+  → _make_orchestrator() [DevNexRunContext + DevNexOrchestrator]
+  → DevNexOrchestrator.run_node(stage)
+    → run_context.validate_workspace()        [F-010]
+    → _load_ruleset() + _enforce_critical_globs()  [F-009]
+    → selected _run_s*N*() handler
+      → _invoke_with_retry(prompt, files, node_id)  [F-002]
+        → gca_invoker.invoke_prompt()
+    → StateStore.set_node_status()
 ```
 
-### GUI Single Node
-
-```text
-WorkflowPanel.node_run_requested
-  -> MainWindow._on_node_run_requested()
-    -> MainWindow._get_orchestrator()
-    -> NodeWorker.__init__()
-    -> MainWindow._wire_worker()
-    -> NodeWorker.start()
-      -> NodeWorker.run()
-        -> NodeWorker._execute()
-          -> DevNexOrchestrator.run_node()
+### AF.json Workflow Bridge (F-008)
+```
+DevNexOrchestrator.run_workflow(workflow_path, inputs)
+  → WorkflowEngine(gca_bridge=self.gca_invoker, ...)
+  → WorkflowEngine.execute(workflow_path, inputs)
+    → _topological_sort()
+    → for node in ordered:
+        _resolve_templates()
+        dispatch by serviceId
 ```
 
-### GUI Full Run
-
-```text
-WorkflowPanel.run_all_requested
-  -> MainWindow._on_run_all_requested()
-    -> FullRunWorker.__init__()
-    -> FullRunWorker.start()
-      -> FullRunWorker.run()
-        -> FullRunWorker._execute()
-          -> DevNexOrchestrator.run_all()
-            -> DevNexOrchestrator.run_node() for each supported node
+### UC 3.1 ASIL Review Pipeline
+```
+AsilReviewSkill.run(source_file, asil_level)
+  → Phase 1: Ollama TRIAGE  → violation JSON list
+  → Phase 2: Gemini CLI PLAN → fix plan per violation
+  → Phase 3: GCA CODE_GEN   → fix diffs (split on "---DIFF---")
+  → AsilGate.enforce(asil_level, violations)
+    → ASIL-D + criticals → raise SemanticConflictError
+  → write asil_review_{stem}.json + asil_review_{stem}.md
 ```
 
-### GCA Invocation
-
-```text
-DevNexOrchestrator._run_s*N*()
-  -> DevNexOrchestrator.gca_invoker
-    -> DevNexGCAInvoker(Path(workspace_path))
-  -> DevNexGCAInvoker.invoke_prompt()
-    -> _create_isolated_workspace()
-    -> _read_registry_ids()
-    -> _launch_vscode()
-    -> _wait_and_connect()
-      -> _is_port_open()
-      -> _DirectGCAClient()
-    -> _prepare_context()
-      -> reset_chat()
-      -> close_all_files()
-      -> open_file()
-      -> add_file_to_context()
-    -> _DirectGCAClient.send_prompt()
-    -> fallback _invoke_via_bridge()
-      -> DevNexBridge.send_prompt()
+### UC 4.1 Standards Q&A
+```
+StandardsQASkill.answer(question, scope_filter)
+  → HybridRetriever.retrieve(query, index_key, top_k)
+    → _embed_query() [Ollama nomic-embed-text]
+    → _dense_search() [Qdrant REST] || _bm25_search() [BM25Okapi]
+    → merge by doc_id, compute hybrid_score
+  → _generate_answer(question, chunks) [Ollama /api/generate]
+  → QAAnswer(question, answer, sources, ...)
 ```
 
-### AF.json Workflow Engine
-
-```text
-WorkflowEngine.execute()
-  -> json.loads(Path(workflow_path).read_text())
-  -> _topological_sort()
-  -> for each node:
-       -> _resolve_templates()
-       -> service dispatch:
-            logic.internal: no-op
-            extension.llm.sendPrompt: gca_bridge.send_prompt()
-            atomic.executionService: subprocess.run()
-            logic.humanReview: on_human_review()
+### UC 4.4 RAM Overlap Detection
+```
+run_uc4_4_semantic_check(config)
+  → MapAnalyzer.parse(map_path)
+  → MapAnalyzer.get_ram_sections()
+  → RamOverlapDetector.detect(sections)
+  → AsilGate.enforce(asil_level, overlap_results)
+    → ASIL-D + overlap → raise SemanticConflictError
+  → write layout.json + overlap_report.json + gate_decision.json
 ```
 
-## 4. Data Transformation Traces
+---
 
-### `S1N1`: LLD Generation
+## 5. Data Transformation Traces
 
-Input:
+### S1N1 — LLD Generation
+Input config keys: `SWC_name`, `G_SWDD_TEMP`, `SWC_name_C`, `SWC_name_H`, `SWC_name_TEMP_LLD`, `SWC_name_HLD`, `lds_file`, `map_file`, `workspace_path`
 
-- Config keys: `SWC_name`, `G_SWDD_TEMP`, `SWC_name_C`, `SWC_name_H`, `SWC_name_TEMP_LLD`, `SWC_name_HLD`, `lds_file`, `map_file`, `workspace_path`.
+1. `_validate_config()` checks all required keys
+2. `run_context.validate_workspace()` ★ (F-010)
+3. `_enforce_critical_globs()` ★ (F-009) — warns if `*.c`/`*.h`/`*.ld`/`*.map` absent
+4. `_load_prompt("lld_gen_v1.md")` + `_render_prompt()`
+5. Input files embedded or `[FILE NOT FOUND]`; raises `ArtifactMissingError` on first missing required file ★ (F-005)
+6. `_invoke_with_retry()` ★ (F-002) → GCA
+7. Writes `{SWC}_TEMP_LLD_updated.csv`
 
-Pipeline:
+### S1N4 — Requirement Categorisation
+1. Validate `SWC_name`, `SWC_nameInspBaseLLD`
+2. Raise `ArtifactMissingError` if `SWC_nameInspBaseLLD` missing ★ (F-005)
+3. `_load_prompt("categorize_reqs_v1.md")` ★ (F-006)
+4. `_invoke_with_retry()` → GCA
+5. Writes `{SWC}_FUNC_req.csv`
 
-1. `_validate_config()` checks required keys.
-2. Relative file paths are resolved against `workspace_path`.
-3. `lld_gen_v1.md` is loaded.
-4. `{{KEY}}` placeholders are replaced.
-5. Input file contents are embedded into prompt when present; missing files are represented as `[FILE NOT FOUND]`.
-6. GCA is invoked with prompt and file paths.
-7. Raw response is written to `{SWC}_TEMP_LLD_updated.csv`.
+### S3N1 — LLD-to-Code Traceability ★ (F-001, F-007)
+1. `_load_prompt("lld_code_trace_v1.md")`
+2. Attaches `updated_{SWC}.c` + `{SWC}_FUNC_req.csv`
+3. `_invoke_with_retry()` → GCA
+4. Writes **`LLD_Code_Trace_Matrix.csv`** (was `LLD_Code_Trace_Report.csv`)
 
-Output:
+### S4N1 — HLD-to-LLD Links ★ (F-001, F-007)
+1. `_load_prompt("hld_lld_links_v1.md")`
+2. Attaches HLD file + `{SWC}_FUNC_req.csv`
+3. `_invoke_with_retry()` → GCA
+4. Writes **`HLD_LLD_Trace_Matrix.csv`** (was `HLD_LLD_Links.json`)
 
-- `NodeResult(node_id="S1N1", status="complete", output=<GCA response>, artifacts=[...])`
+### S5N1 — Full Downstream Trace ★ (F-001)
+- Consumes `LLD_Code_Trace_Matrix.csv` + `HLD_LLD_Trace_Matrix.csv`
+- Writes **`Full_Downstream_Trace.csv`** (was `HLD_LLD_Code_Trace_Matrix.csv`)
 
-### `S1N4`: Requirement Categorization
+---
 
-1. Validate `SWC_name` and `SWC_nameInspBaseLLD`.
-2. Read inspection-base LLD if it exists.
-3. Build categorization prompt.
-4. Invoke GCA.
-5. Write `{SWC}_FUNC_req.csv`.
+## 6. State and Mutation Map
 
-### `S2N1`: Code Linking
+| Component | Initialised | Mutated | Risk |
+|---|---|---|---|
+| `DevNexOrchestrator.config` | `__init__` | Direct assignment in tests | Stale in long-lived GUI orchestrator |
+| `DevNexOrchestrator._gca_invoker` | First `gca_invoker` access | Set once lazily | Pre-seed `_gca_invoker` in tests |
+| `DevNexOrchestrator._ruleset` | `_load_ruleset()` | Read-only after load | None |
+| `StateStore` JSON | `load()` | `set_node_status()`, `reset()` | No file lock |
+| `ConfigStore` JSON | `load()` | `save()` | Invalid JSON silently replaced |
+| `MainWindow._orchestrator` | `_get_orchestrator()` | Reset on config save/reset | Callbacks re-wired by workers |
+| `HybridRetriever._qdrant_ok` | `None` | Set on first Qdrant call | Sticky failure — won't retry Qdrant this session |
 
-1. Validate `SWC_name` and `SWC_name_C`.
-2. Load `code_link_v1.md`.
-3. Render prompt from config.
-4. Invoke GCA with source file and `{SWC}_FUNC_req.csv`.
-5. Write `updated_{SWC}.c`.
+---
 
-### `S3N1` to `S5N1`: Traceability
+## 7. Error and Exception Map
 
-- `S3N1`: `updated_{SWC}.c` + `{SWC}_FUNC_req.csv` -> `LLD_Code_Trace_Report.csv`.
-- `S4N1`: HLD file + `{SWC}_FUNC_req.csv` -> `HLD_LLD_Links.json`.
-- `S5N1`: `LLD_Code_Trace_Report.csv` + `HLD_LLD_Links.json` -> `HLD_LLD_Code_Trace_Matrix.csv`.
+| Exception | Raised At | Trigger |
+|---|---|---|
+| `NodeExecutionError` | `run_node()` | Unknown node ID |
+| `NodeExecutionError` ★ | `_invoke_with_retry()` | GCA exhausted all retry attempts (F-002) |
+| `WorkflowAbortedError` | review gates, `WorkflowEngine` | Human rejected |
+| `ConfigValidationError` | `_validate_config()` | Missing/empty config key |
+| `ConfigValidationError` ★ | `validate_workspace()` | `workspace_path` absent or not a dir (F-010) |
+| `ArtifactMissingError` ★ | `_run_s1n1()`, `_run_s1n4()` | Required input file not on disk (F-005) |
+| `SemanticConflictError` ★ | `AsilGate.enforce()` | ASIL-D overlap or ASIL-D critical violation |
+| `GCANotAvailableError` | `bridge.py` | Connection failure |
+| `GCABridgeError` | `bridge.py` | HTTP/empty/timeout response |
 
-### `S6N1` to `S8N1`: Testing and UTD
+---
 
-- `S6N1`: source + functional requirements -> `test.bat`, then human gate for `.TST` generation.
-- `S7N1`: workspace/artifact `.tst` files -> `{SWC}_UTD.md`.
-- `S8N1`: UTD + functional requirements -> `UTD_LLD_Links.json`.
+## 8. Test Coverage Map
 
-### `S9N1`: Final Traceability
+| Test File | Components Covered | Tests |
+|---|---|---|
+| `tests/test_config_store.py` | `ConfigStore` | 4 |
+| `tests/test_state_store.py` | `StateStore` | 5 |
+| `tests/test_gca_bridge.py` | `DevNexBridge` | 6 |
+| `tests/test_orchestrator.py` | `DevNexOrchestrator` core paths | 9 |
+| `tests/test_trace_model.py` | `TraceGraph`, `trace_loader`, `emit_trace_json` | 17 |
+| `tests/test_sprint0_fixes.py` ★ | F-001…F-010 regressions | 21 |
+| `tests/test_asil_review.py` ★ | `AsilReviewSkill`, `AsilGate` (UC 3.1) | 20 |
+| `tests/test_standards_qa.py` ★ | `StandardsQASkill`, `HybridRetriever` (UC 4.1) | 23 |
+| `tests/test_uc4_4.py` ★ | `MapAnalyzer`, `RamOverlapDetector`, `LinkerScriptParser`, `AsilGate` (UC 4.4) | 64 |
+| **Total** | | **169 / 169 passing** |
 
-1. Load `full_trace_v1.md`.
-2. Render prompt from config.
-3. Attach `HLD_LLD_Code_Trace_Matrix.csv` and `UTD_LLD_Links.json`.
-4. Write `Full_Traceability_Matrix.csv`.
+---
 
-## 5. State and Mutation Map
+## 9. Known Risks (Post Sprint 0)
 
-| Component | Initialized | Mutated | Risk |
-| --- | --- | --- | --- |
-| `DevNexOrchestrator.config` | `__init__()` | Replaced directly in tests; not auto-reloaded after external config changes. | Stale config in long-lived GUI orchestrator. |
-| `DevNexOrchestrator._gca_invoker` | First `gca_invoker` access | Set once lazily. | Workspace path changes require orchestrator reset. |
-| `StateStore` JSON | `StateStore.load()` | `set_node_status()`, `reset()` | No file lock. |
-| `ConfigStore` JSON | `ConfigStore.load()` | `save()` | Invalid JSON silently ignored. |
-| `MainWindow._workers` | `__init__()` | Worker append only. | Keeps worker references for lifetime. |
-| `MainWindow._orchestrator` | `_get_orchestrator()` | Reset on config save/reset. | Shared callbacks are reassigned by workers. |
-| `NodeWorker._review_event` | `__init__()` | clear/wait/set around review gates. | Worker blocks until GUI resumes. |
-| `FullRunWorker._review_event` | `__init__()` | clear/wait/set around review gates. | Same as single-node worker. |
-| `SettingsManager._data` | `_load()` | `set()` and failed load reset. | Save errors are swallowed. |
-| `VCycleCanvas._statuses` | `__init__()` | `set_node_status()`. | GUI-only state. |
-
-## 6. Error and Exception Map
-
-| Exception | Raised At | Trigger | Caught By |
-| --- | --- | --- | --- |
-| `NodeExecutionError` | `orchestrator.py:140` | Unknown node ID. | CLI generic catch, GUI worker catch, tests. |
-| `NodeExecutionError` | `orchestrator.py:230,295,320` | Invalid GCA response for S1N1/S1N4/S2N1. | CLI generic catch, GUI worker catch. |
-| `WorkflowAbortedError` | `orchestrator.py:252,267,341,436` | Human review rejected. | GUI worker catch; CLI generic catch. |
-| `WorkflowAbortedError` | `workflow_engine.py:98` | Graph human review rejected. | Caller responsibility. |
-| `ConfigValidationError` | `orchestrator.py:509` | Missing required config field. | CLI generic catch, GUI worker generic catch, tests. |
-| `GCANotAvailableError` | `bridge.py:70` | Bridge connection failure. | CLI specific catch; otherwise caller. |
-| `GCABridgeError` | `bridge.py:61,65,75,79` | HTTP error, empty response, timeout, unexpected bridge error. | Caller responsibility. |
-| `RuntimeError` | `vscode_invoker.py:106,161` | GCA retries exhausted or registry timeout. | Registry timeout is caught for fallback; send failure falls into fallback path through generic catch. |
-| `NotImplementedError` | `base_worker.py:50` | Base worker `_execute()` called directly. | `BaseWorker.run()` catches generic exception. |
-
-Silent or swallowed errors:
-
-- `_DirectGCAClient.reset_chat()`, `close_all_files()`, `open_file()`, `add_file_to_context()`, and `close()` swallow generic exceptions.
-- `SettingsManager.save()` swallows all exceptions.
-- `ConfigStore.load()` returns defaults for invalid JSON.
-- `StateStore.load()` returns `{}` for invalid JSON.
-- `DevNexBridge.is_available()` returns `False` for all exceptions.
-
-## 7. Test Coverage Map
-
-| Test File | Covered Components | Assertions |
-| --- | --- | --- |
-| `tests/test_config_store.py` | `ConfigStore` | Save/load roundtrip, default config on missing file, parent directory creation, overwrite behavior. |
-| `tests/test_state_store.py` | `StateStore` | Node status save/read, multiple node statuses, reset, persistence across instances, missing file. |
-| `tests/test_gca_bridge.py` | `DevNexBridge` | Health true/false, prompt success, HTTP error raises, connection error raises. |
-| `tests/test_orchestrator.py` | `DevNexOrchestrator` | Unknown node error, S1N2/S1N3 human gate paths, config validation, prompt rendering, missing prompt fallback, S4 artifact write. |
-
-Known untested areas:
-
-- GUI widgets, dialogs, and workers.
-- `DevNexGCAInvoker` WebSocket and VS Code launch behavior.
-- `WorkflowEngine`.
-- `IntentClassifier`, `ContextManager`, `SkillRegistry`, and skill adapters.
-- Most orchestrator stages.
-- `ArtifactWriter`, icon generation, console logging helpers.
-
-## 8. High-Risk Functions
-
-- `DevNexOrchestrator.run_node()` because every CLI, GUI, and skill node execution depends on it.
-- `DevNexOrchestrator.run_all()` because it defines full pipeline order.
-- `DevNexOrchestrator._run_s1n1()` because it performs config validation, path resolution, file embedding, GCA invocation, and artifact writing.
-- `DevNexGCAInvoker.invoke_prompt()` because it owns the most fragile external integration path.
-- `StateStore.set_node_status()` because it performs unlocked read-modify-write persistence.
-- `MainWindow._wire_worker()` because GUI callbacks and worker signals pass through it.
-- `NodeWorker._handle_human_review()` and `FullRunWorker._handle_human_review()` because they block background threads while waiting for GUI response.
+| Risk | Severity | Mitigation |
+|---|---|---|
+| `StateStore` has no file lock | Medium | Single-process use; lock planned for Sprint 2 |
+| `DevNexGCAInvoker` requires `websocket-client` package | Low | Guard with `try/except ImportError`; mock in tests |
+| `rglob` on FUSE-mounted Windows paths may miss files | Low | `touch` modifies mtime; `removeprefix` fix removes char-set stripping |
+| Qdrant optional — BM25 fallback only | Low | `_qdrant_ok` flag prevents repeated failed calls |
+| `_default_human_review` blocks on `input()` in CI | Medium | Override `on_human_review` callback; CI passes `lambda: True` |

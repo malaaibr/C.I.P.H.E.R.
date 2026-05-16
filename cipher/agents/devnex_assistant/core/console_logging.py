@@ -1,4 +1,7 @@
-"""Console log formatting helpers with ANSI colors for better debugging visibility."""
+"""Console log formatting helpers with ANSI colors for better debugging visibility.
+
+Python 3.10/3.11 compat: datetime.UTC introduced in 3.11 — use timezone.utc fallback.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +9,12 @@ import os
 import re
 import sys
 import ctypes
-from datetime import UTC, datetime
+from datetime import datetime, timezone
+
+try:
+    from datetime import UTC          # Python 3.11+
+except ImportError:
+    UTC = timezone.utc                # Python 3.10 compat
 
 
 ANSI_RESET = "\033[0m"
@@ -23,24 +31,18 @@ QUOTED_PATH_PATTERN = re.compile(r"'([^']*[\\/][^']*)'")
 
 
 def _try_enable_windows_vt_mode() -> bool:
-    """
-    @brief Enable ANSI escape support for Windows console handles when possible.
-
-    @return `True` when ANSI virtual terminal mode is available.
-    """
     if os.name != "nt":
         return True
     kernel32 = getattr(ctypes, "windll", None)
     if kernel32 is None:
         return False
     try:
-        handle = kernel32.kernel32.GetStdHandle(-11)  # STD_OUTPUT_HANDLE
+        handle = kernel32.kernel32.GetStdHandle(-11)
         if handle in (0, -1):
             return False
         mode = ctypes.c_uint32()
         if kernel32.kernel32.GetConsoleMode(handle, ctypes.byref(mode)) == 0:
             return False
-        # ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
         if kernel32.kernel32.SetConsoleMode(handle, mode.value | 0x0004) == 0:
             return False
         return True
@@ -49,11 +51,6 @@ def _try_enable_windows_vt_mode() -> bool:
 
 
 def _supports_color() -> bool:
-    """
-    @brief Determine whether ANSI color output should be enabled.
-
-    @return `True` when colored output is supported and not disabled.
-    """
     if os.environ.get("NO_COLOR"):
         return False
     if os.environ.get("FORCE_COLOR"):
@@ -64,18 +61,10 @@ def _supports_color() -> bool:
 
 
 def _colorize_path_segments(message: str, enable_color: bool) -> str:
-    """
-    @brief Apply color highlighting to quoted path-like segments.
-
-    @param message Raw log message text.
-    @param enable_color Flag indicating whether color is enabled.
-
-    @return Message with path segments colorized when enabled.
-    """
     if not enable_color:
         return message
 
-    def _replace_path(match: re.Match[str]) -> str:
+    def _replace_path(match: re.Match) -> str:
         quoted_path = match.group(0)
         return f"{ANSI_BLUE}{quoted_path}{ANSI_RESET}"
 
@@ -83,13 +72,6 @@ def _colorize_path_segments(message: str, enable_color: bool) -> str:
 
 
 def _level_color(level: str) -> str:
-    """
-    @brief Map log levels to ANSI color codes.
-
-    @param level Log level name.
-
-    @return ANSI color escape sequence for the level.
-    """
     normalized_level = level.upper()
     if normalized_level == "ERROR":
         return ANSI_RED
@@ -101,11 +83,6 @@ def _level_color(level: str) -> str:
 
 
 def utc_timestamp() -> str:
-    """
-    @brief Build UTC timestamp for log-line prefixes.
-
-    @return UTC timestamp in `%Y-%m-%dT%H:%M:%SZ` format.
-    """
     return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
@@ -116,17 +93,6 @@ def format_console_log(
     timestamp: str | None = None,
     function_name: str | None = None,
 ) -> str:
-    """
-    @brief Build a structured console log line.
-
-    @param module_name Logical module emitting the log line.
-    @param level Log severity text.
-    @param message Human-readable log message.
-    @param timestamp Optional precomputed timestamp.
-    @param function_name Optional function name for call-site tracing.
-
-    @return Fully formatted console log line.
-    """
     effective_timestamp = timestamp or utc_timestamp()
     enable_color = _supports_color()
     level_text = level.upper()

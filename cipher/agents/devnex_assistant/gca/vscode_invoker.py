@@ -1,12 +1,17 @@
-"""DevNex GCA Invoker — adapted from Int_Agent VscodeGeminiInvoker.
+"""DevNex GCA Invoker — singleton VS Code / GCA WebSocket connection.
 
-Fix: GeminiController(vs_path=...) uses workspace-based registry lookup, but VS Code
-stores the workspace path in a different format (URI / different casing on Windows),
-so _select_instance returns None → client=None → 'NoneType'.get() crash.
+BUG FIX (serious): the original implementation created a fresh temp workspace
+and launched a NEW VS Code window on every invoke_prompt() call, so each stage
+opened its own instance with its own GCA connection.
 
-Solution: poll ~/.gca_instances.json directly, detect the new instance at the moment
-its port is open, open the WebSocket immediately (before any race), and communicate
-directly — no GeminiController re-initialization after detection.
+New strategy
+────────────
+1. Probe the persisted ``_client`` — if the WebSocket is still alive, reuse it.
+2. Scan ``~/.gca_instances.json`` for any already-running GCA instance with an
+   open port and connect to it (no new VS Code window needed).
+3. Only launch a new VS Code window when neither (1) nor (2) succeeds.
+4. Hold the single connection for the lifetime of the DevNexGCAInvoker object,
+   so all S1–S9 stages share the same VS Code instance.
 """
 
 from __future__ import annotations
@@ -16,6 +21,7 @@ import json
 import socket
 import subprocess
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,17 +34,15 @@ from core.console_logging import format_console_log, utc_timestamp
 MODULE_NAME = "DevNexGCAInvoker"
 
 _GCA_REGISTRY      = Path.home() / ".gca_instances.json"
-_GCA_WAIT_TIMEOUT  = 90   # seconds to wait for the extension to register
+_GCA_WAIT_TIMEOUT  = 90   # seconds to wait for a new extension to register
 _GCA_POLL_INTERVAL = 2    # seconds between registry polls
-_GCA_SEND_RETRIES  = 5    # retries when sendPrompt returns error/empty
+_GCA_SEND_RETRIES  = 5    # send-prompt retries
 _GCA_RETRY_BACKOFF = 5    # seconds between send retries
 
 
 @dataclass(slots=True)
 class GCAInvocationResult:
-    """
-    @brief Captures raw response and metadata for one GCA invocation attempt.
-    """
+    """Captures raw response and metadata for one GCA invocation attempt."""
     raw_response:          str
     is_response_valid:     bool
     started_vscode_window: bool
@@ -54,6 +58,7 @@ class _DirectGCAClient:
 
     def __init__(self, port: int, instance_id: str) -> None:
         self._instance_id = instance_id
+        self._port        = port
         self._ws = _ws.WebSocket()
         self._ws.connect(f"ws://localhost:{port}")
 
@@ -65,6 +70,14 @@ class _DirectGCAClient:
         })
         self._ws.send(message)
         return json.loads(self._ws.recv())
+
+    def ping(self) -> bool:
+        """Return True if the WebSocket connection is still alive."""
+        try:
+            self._ws.ping()
+            return True
+        except Exception:
+            return False
 
     def reset_chat(self) -> None:
         try:
@@ -114,16 +127,19 @@ class _DirectGCAClient:
             pass
 
 
-# ── Registry helpers ───────────────────────────────────────────────────────────
+# ── Registry / port helpers ────────────────────────────────────────────────────
 
-def _read_registry_ids() -> set[str]:
+def _read_registry() -> list[dict]:
+    """Return the list of entries from ~/.gca_instances.json, or []."""
     try:
         data = json.loads(_GCA_REGISTRY.read_text(encoding="utf-8"))
-        if isinstance(data, list):
-            return {e.get("instanceId", "") for e in data}
+        return data if isinstance(data, list) else []
     except (FileNotFoundError, json.JSONDecodeError):
-        pass
-    return set()
+        return []
+
+
+def _read_registry_ids() -> set[str]:
+    return {e.get("instanceId", "") for e in _read_registry()}
 
 
 def _is_port_open(port: int) -> bool:
@@ -136,27 +152,38 @@ def _is_port_open(port: int) -> bool:
         return False
 
 
-def _wait_and_connect(before_ids: set, timeout: int) -> _DirectGCAClient:
+def _find_any_live_instance() -> _DirectGCAClient | None:
     """
-    Poll ~/.gca_instances.json until a new instance (not in before_ids) has an
-    open port, then immediately open the WebSocket and return the live client.
+    Scan ~/.gca_instances.json and return a connected client for the first
+    entry that has an open port. Returns None if no instance is reachable.
+    """
+    for entry in reversed(_read_registry()):
+        port        = entry.get("port")
+        instance_id = entry.get("instanceId", "")
+        if port and instance_id and _is_port_open(port):
+            try:
+                return _DirectGCAClient(port=port, instance_id=instance_id)
+            except Exception:
+                continue
+    return None
+
+
+def _wait_and_connect(before_ids: set[str], timeout: int) -> _DirectGCAClient:
+    """
+    Poll ~/.gca_instances.json until a NEW instance (not in before_ids) has
+    an open port, then immediately open the WebSocket and return the client.
     Raises RuntimeError on timeout.
     """
     deadline = time.time() + timeout
     while time.time() < deadline:
-        try:
-            data = json.loads(_GCA_REGISTRY.read_text(encoding="utf-8"))
-            if isinstance(data, list):
-                for entry in reversed(data):
-                    instance_id = entry.get("instanceId", "")
-                    port = entry.get("port")
-                    if instance_id not in before_ids and port and _is_port_open(port):
-                        try:
-                            return _DirectGCAClient(port=port, instance_id=instance_id)
-                        except Exception:
-                            pass  # port open but WS not ready yet — keep polling
-        except (FileNotFoundError, json.JSONDecodeError):
-            pass
+        for entry in reversed(_read_registry()):
+            instance_id = entry.get("instanceId", "")
+            port        = entry.get("port")
+            if instance_id not in before_ids and port and _is_port_open(port):
+                try:
+                    return _DirectGCAClient(port=port, instance_id=instance_id)
+                except Exception:
+                    pass  # port open but WS not ready yet — keep polling
         time.sleep(_GCA_POLL_INTERVAL)
     raise RuntimeError(
         f"gca-communication-layer did not register within {timeout}s. "
@@ -168,44 +195,82 @@ def _wait_and_connect(before_ids: set, timeout: int) -> _DirectGCAClient:
 
 class DevNexGCAInvoker:
     """
-    @brief Invokes GCA via isolated VS Code workspace + direct WebSocket.
+    @brief Invokes GCA via a single, shared VS Code WebSocket connection.
 
     @details
-    Each invoke_prompt() creates a fresh temp workspace, launches VS Code,
-    waits for the gca-communication-layer VSIX to register in
-    ~/.gca_instances.json, then connects directly via WebSocket.
+    A single DevNexGCAInvoker instance is created per run (by the orchestrator)
+    and reused for every stage S1–S9.  All stages therefore share one VS Code
+    window and one WebSocket — no new windows are opened between stages.
 
-    BUG FIX — isolated workspace per invocation
-    ─────────────────────────────────────────────
-    Root cause: GeminiController(workspace_path) connects to the *first* VS Code
-    instance that has workspace_path open.
-
-    Fix: each invoke_prompt call creates a fresh temporary workspace directory.
-    No existing VS Code window can have that directory open.
-
-    BUG FIX — direct WebSocket instead of GeminiController re-initialization
-    ──────────────────────────────────────────────────────────────────────────
-    Root cause: GeminiController re-reads ~/.gca_instances.json in its __init__,
-    which can race with the extension deregistering, leaving client=None and
-    causing 'NoneType'.get() on send_prompt.
-
-    Fix: open the WebSocket at the moment of detection (port + instanceId captured
-    once) so no second registry read is needed.
+    Connection acquisition order on each invoke_prompt():
+      1. Probe the persisted _client WebSocket — reuse if still alive.
+      2. Scan ~/.gca_instances.json for any already-running GCA instance.
+      3. Launch a new VS Code window only if (1) and (2) both fail.
     """
 
     def __init__(self, repo_path: Path) -> None:
         self.repo_path = repo_path
+        self._client:  _DirectGCAClient | None = None
+        self._lock:    threading.Lock           = threading.Lock()
 
     def _trace(self, message: str, level: str = "INFO") -> None:
         caller = "<unknown>"
-        frame = inspect.currentframe()
+        frame  = inspect.currentframe()
         if frame and frame.f_back:
             caller = frame.f_back.f_code.co_name
         print(format_console_log(MODULE_NAME, level, message, utc_timestamp(), caller))
 
-    @staticmethod
-    def _create_isolated_workspace() -> Path:
-        return Path(tempfile.mkdtemp(prefix="devnex_ws_"))
+    # ── Connection management ─────────────────────────────────────────────────
+
+    def _acquire_client(self) -> tuple[_DirectGCAClient, bool]:
+        """
+        Return (client, launched_new_window).
+
+        Tries in order:
+          1. Existing persistent WebSocket (ping check).
+          2. Any live registry entry (no new window).
+          3. Launch a new VS Code window (last resort).
+        """
+        # 1. Reuse existing persistent connection
+        if self._client is not None:
+            if self._client.ping():
+                self._trace(
+                    f"Reusing persistent GCA connection (instance={self._client._instance_id})."
+                )
+                return self._client, False
+            # Dead — drop it
+            self._trace("Persistent WebSocket dropped — reconnecting.", level="WARN")
+            self._client.close()
+            self._client = None
+
+        # 2. Find any already-running GCA instance (no new VS Code window)
+        client = _find_any_live_instance()
+        if client is not None:
+            self._trace(
+                f"Connected to existing GCA instance "
+                f"(port={client._port}, instance={client._instance_id})."
+            )
+            self._client = client
+            return client, False
+
+        # 3. No existing instance — launch a new VS Code window
+        self._trace("No existing GCA instance found — launching VS Code.", level="WARN")
+        isolated_workspace = Path(tempfile.mkdtemp(prefix="devnex_ws_"))
+        self._trace(f"Isolated workspace: '{isolated_workspace}'.")
+
+        before_ids = _read_registry_ids()
+        started    = self._launch_vscode(isolated_workspace)
+        self._trace(f"VS Code launch {'succeeded' if started else 'failed (code not on PATH)'}.")
+
+        self._trace(f"Waiting up to {_GCA_WAIT_TIMEOUT}s for gca-communication-layer…")
+        client = _wait_and_connect(before_ids, timeout=_GCA_WAIT_TIMEOUT)
+        self._trace(
+            f"New GCA instance connected "
+            f"(port={client._port}, instance={client._instance_id}).",
+            level="SUCCESS",
+        )
+        self._client = client
+        return client, started
 
     def _launch_vscode(self, isolated_workspace: Path) -> bool:
         for command in (
@@ -223,6 +288,8 @@ class DevNexGCAInvoker:
                 break
         return False
 
+    # ── Public API ────────────────────────────────────────────────────────────
+
     def invoke_prompt(
         self,
         prompt: str,
@@ -230,64 +297,58 @@ class DevNexGCAInvoker:
         startup_sleep_seconds: int = 0,   # kept for API compatibility; no longer used
     ) -> GCAInvocationResult:
         """
-        @brief Launch fresh VS Code window and submit one prompt via WebSocket.
+        @brief Submit one prompt to GCA, reusing the existing VS Code instance.
 
         @param prompt          Prompt text for GCA.
         @param attached_files  Absolute paths to inject as context files.
         @return GCAInvocationResult with raw response and metadata.
         """
-        isolated_workspace = self._create_isolated_workspace()
-        self._trace(f"Isolated workspace: '{isolated_workspace}'.")
+        with self._lock:
+            started = False
+            try:
+                client, started = self._acquire_client()
+            except RuntimeError as exc:
+                self._trace(str(exc), level="ERROR")
+                return self._invoke_via_bridge(prompt, attached_files, False)
 
-        # Snapshot the registry BEFORE launch to detect the new entry.
-        before_ids = _read_registry_ids()
+            try:
+                self._prepare_context(client, attached_files or [])
+                self._trace("Sending prompt to GCA via WebSocket.")
+                raw_response = client.send_prompt(prompt)
+                self._trace(
+                    f"GCA response received ({len(raw_response)} chars).",
+                    level="SUCCESS",
+                )
+                return GCAInvocationResult(
+                    raw_response=raw_response,
+                    is_response_valid=bool(raw_response),
+                    started_vscode_window=started,
+                )
 
-        started = self._launch_vscode(isolated_workspace)
-        self._trace(f"VS Code launch {'succeeded' if started else 'failed'}.")
-
-        self._trace(f"Waiting up to {_GCA_WAIT_TIMEOUT}s for gca-communication-layer…")
-        try:
-            client = _wait_and_connect(before_ids, timeout=_GCA_WAIT_TIMEOUT)
-        except RuntimeError as exc:
-            self._trace(str(exc), level="ERROR")
-            return self._invoke_via_bridge(prompt, attached_files, started)
-
-        try:
-            # Activate: reset chat + clean editor + inject context files.
-            self._prepare_context(client, attached_files or [])
-
-            self._trace("Sending prompt to GCA via WebSocket.")
-            raw_response = client.send_prompt(prompt)
-            self._trace(f"GCA response received ({len(raw_response)} chars).")
-
-            return GCAInvocationResult(
-                raw_response=raw_response,
-                is_response_valid=bool(raw_response),
-                started_vscode_window=started,
-            )
-
-        except Exception as exc:
-            self._trace(f"GCA invocation error: {exc} — falling back to bridge.", level="ERROR")
-            return self._invoke_via_bridge(prompt, attached_files, started)
-
-        finally:
-            client.close()
+            except Exception as exc:
+                self._trace(
+                    f"GCA invocation error: {exc} — invalidating connection, falling back to bridge.",
+                    level="ERROR",
+                )
+                # Invalidate the dead client so next call triggers reconnect
+                self._client = None
+                try:
+                    client.close()
+                except Exception:
+                    pass
+                return self._invoke_via_bridge(prompt, attached_files, started)
 
     def _prepare_context(
         self,
         client: _DirectGCAClient,
         context_file_paths: list[str],
     ) -> None:
-        """
-        @brief Reset chat, close all files, then inject context files.
-
-        Mirrors _prepare_gca_controller_context from the original invoker.
-        """
+        """Reset chat, close all editor tabs, then inject context files."""
         client.reset_chat()
-        self._trace("GCA environment reset (reset_chat).")
+        self._trace("GCA chat reset.")
 
         client.close_all_files()
-        self._trace("All editor tabs closed.")
+        self._trace("Editor tabs cleared.")
 
         successful = 0
         for file_path in context_file_paths:
@@ -297,7 +358,10 @@ class DevNexGCAInvoker:
                 self._trace(f"Context file added: '{file_path}'.")
                 successful += 1
             except Exception as exc:
-                self._trace(f"Context file injection failed for '{file_path}': {exc}", level="WARN")
+                self._trace(
+                    f"Context file injection failed for '{file_path}': {exc}",
+                    level="WARN",
+                )
 
         if context_file_paths:
             self._trace(
@@ -310,11 +374,10 @@ class DevNexGCAInvoker:
         attached_files: list[str] | None,
         started_vscode_window: bool,
     ) -> GCAInvocationResult:
-        """@brief Fallback: invoke GCA via the DevNex Bridge VSIX HTTP relay."""
+        """Fallback: invoke GCA via the DevNex Bridge VSIX HTTP relay."""
         from gca.bridge import DevNexBridge
-        bridge = DevNexBridge()
-        self._trace("Sending prompt via Bridge HTTP client.")
-        response_text = bridge.send_prompt(prompt, attached_files or [])
+        self._trace("Sending prompt via Bridge HTTP fallback.")
+        response_text = DevNexBridge.send_prompt(prompt, attached_files or [])
         self._trace(f"Bridge response received ({len(response_text)} chars).")
         return GCAInvocationResult(
             raw_response=response_text,
@@ -322,8 +385,16 @@ class DevNexGCAInvoker:
             started_vscode_window=started_vscode_window,
         )
 
+    def disconnect(self) -> None:
+        """Explicitly close the persistent WebSocket (call on shutdown)."""
+        with self._lock:
+            if self._client is not None:
+                self._client.close()
+                self._client = None
+                self._trace("GCA WebSocket connection closed.")
+
     def is_available(self) -> bool:
-        """@brief Check VS Code CLI availability without launching a window."""
+        """Check VS Code CLI availability without launching a window."""
         try:
             result = subprocess.run(["code", "--version"], capture_output=True, timeout=5)
             return result.returncode == 0

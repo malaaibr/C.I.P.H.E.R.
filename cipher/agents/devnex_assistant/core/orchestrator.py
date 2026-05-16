@@ -1,8 +1,25 @@
-"""DevNexOrchestrator — coordinates V-cycle stage execution."""
+"""DevNexOrchestrator — coordinates V-cycle stage execution.
+
+Sprint 0 gap fixes applied:
+  F-001 Artifact filenames aligned with trace_loader CSV_MAP expectations
+        S3N1 -> LLD_Code_Trace_Matrix.csv
+        S4N1 -> HLD_LLD_Trace_Matrix.csv  (JSON kept as HLD_LLD_Links.json)
+        S5N1 -> Full_Downstream_Trace.csv
+  F-002 _invoke_with_retry() wraps every GCA call, reads max_gca_retries from config
+  F-005 ArtifactMissingError raised in S1N1 / S1N4 when required files absent
+  F-006 S1N4 now loads categorize_reqs_v1.md prompt template
+  F-007 S3N1 / S4N1 now load lld_code_trace_v1.md / hld_lld_links_v1.md templates
+  F-008 run_workflow() bridges WorkflowEngine so AF.json graphs can be executed
+  F-009 _enforce_critical_globs() validates workspace files from ruleset.yaml
+  F-010 run_context.validate_workspace() called before S1N1
+"""
 
 from __future__ import annotations
 
 import inspect
+import json
+import time
+import yaml
 from pathlib import Path
 from typing import Callable, Any
 from dataclasses import dataclass, field
@@ -10,7 +27,7 @@ from dataclasses import dataclass, field
 from core.console_logging import format_console_log, utc_timestamp
 from core.errors import (
     WorkflowAbortedError, NodeExecutionError,
-    ConfigValidationError,
+    ConfigValidationError, ArtifactMissingError,
 )
 from core.run_context import DevNexRunContext
 from persistence.state_store import StateStore
@@ -33,18 +50,14 @@ LLD_EMBEDDED_CONTEXT_KEYS = [
     "SWC_name_TEMP_LLD",
     "SWC_name_HLD",
 ]
+_RULESET_PATH = Path(__file__).parent.parent / "configs" / "ruleset.yaml"
 
 
 @dataclass
 class NodeResult:
     """
     @brief Result contract returned by each V-cycle node.
-
-    @details
-    UI workers, CLI commands, and tests consume this object to inspect node
-    status, raw output, generated artifacts, and non-fatal errors.
     """
-
     node_id:   str
     status:    str
     output:    str
@@ -56,27 +69,20 @@ class DevNexOrchestrator:
     """
     @brief Coordinates V-cycle node execution for DevNex Assistant.
 
-    @details
-    Mirrors Int_Agent Orchestrator structure:
-    - _trace() for structured logging (same pattern)
-    - progress_callback(pct, msg) for GUI updates
-    - Artifact persistence after each node
-    - Human review gates that block on threading.Event
-
     Stage/Node mapping:
-      S1N1 → lld_gen_skill.run_s1n1()
-      S1N2 → human review (upload to req mgmt)
-      S1N3 → human review (extract IDs)
-      S1N4 → lld_gen_skill.run_s1n4()
-      S2N1 → code_link_skill.run_s2n1()
-      S2N2 → human review (inspect annotated code)
-      S3N1 → trace_report_skill.run_s3()
-      S4N1 → trace_report_skill.run_s4()
-      S5N1 → trace_report_skill.run_s5()
-      S6N1 → test_gen_skill.run_s6() + human review (.TST wait)
-      S7N1 → test_gen_skill.run_s7()
-      S8N1 → test_gen_skill.run_s8()
-      S9N1 → full_trace_skill.run_s9()
+      S1N1 -> lld_gen_skill.run_s1n1()
+      S1N2 -> human review (upload to req mgmt)
+      S1N3 -> human review (extract IDs)
+      S1N4 -> lld_gen_skill.run_s1n4()
+      S2N1 -> code_link_skill.run_s2n1()
+      S2N2 -> human review (inspect annotated code)
+      S3N1 -> trace_report_skill.run_s3()
+      S4N1 -> trace_report_skill.run_s4()
+      S5N1 -> trace_report_skill.run_s5()
+      S6N1 -> test_gen_skill.run_s6() + human review (.TST wait)
+      S7N1 -> test_gen_skill.run_s7()
+      S8N1 -> test_gen_skill.run_s8()
+      S9N1 -> full_trace_skill.run_s9()
     """
 
     def __init__(
@@ -88,16 +94,6 @@ class DevNexOrchestrator:
         on_human_review:    Callable[[str, str], bool] | None = None,
         progress_callback:  Callable[[int, str], None] | None = None,
     ) -> None:
-        """
-        @brief Initialize stores, callbacks, and run artifact directory.
-
-        @param run_context Run metadata and artifact root for this workflow run.
-        @param on_log Optional callback for log messages.
-        @param on_node_started Optional callback invoked before node execution.
-        @param on_node_complete Optional callback invoked after node execution.
-        @param on_human_review Optional callback used by human-review gates.
-        @param progress_callback Optional callback used by full-run progress.
-        """
         self.run_context       = run_context
         self.on_log            = on_log or (lambda *_: None)
         self.on_node_started   = on_node_started or (lambda _: None)
@@ -109,7 +105,8 @@ class DevNexOrchestrator:
         self.config_store = ConfigStore()
         self.config       = self.config_store.load()
 
-        self._gca_invoker = None  # lazy-loaded on first use
+        self._gca_invoker = None
+        self._ruleset: dict | None = None
 
         self._artifacts_dir = run_context.get_artifacts_path()
         self._artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -118,11 +115,6 @@ class DevNexOrchestrator:
 
     @property
     def gca_invoker(self):
-        """
-        @brief Lazily construct the GCA invoker for the configured workspace.
-
-        @return `DevNexGCAInvoker` instance reused by subsequent node calls.
-        """
         if self._gca_invoker is None:
             from gca.vscode_invoker import DevNexGCAInvoker
             self._gca_invoker = DevNexGCAInvoker(Path(self.config.get("workspace_path", ".")))
@@ -131,10 +123,6 @@ class DevNexOrchestrator:
     # ── Logging ───────────────────────────────────────────────────────────
 
     def _trace(self, message: str, level: str = "INFO") -> None:
-        """
-        @brief Emit structured log line — same pattern as Int_Agent Orchestrator._trace().
-        Calls both print() (console) and on_log callback (GUI log tail).
-        """
         caller = "<unknown>"
         frame = inspect.currentframe()
         if frame and frame.f_back:
@@ -143,19 +131,88 @@ class DevNexOrchestrator:
         print(line)
         self.on_log(message, level)
 
+    # ── F-002: GCA retry wrapper ──────────────────────────────────────────
+
+    def _invoke_with_retry(self, prompt: str, files: list, node_id: str = ""):
+        """
+        @brief F-002 — Invoke GCA with automatic retry on invalid response.
+
+        Reads max_gca_retries from config (default 3 per ruleset.yaml).
+        Raises NodeExecutionError if all attempts fail.
+        """
+        max_retries = int(self.config.get("max_gca_retries", 3))
+        last_exc: Exception | None = None
+        for attempt in range(1, max_retries + 1):
+            try:
+                result = self.gca_invoker.invoke_prompt(prompt, files)
+                if result.is_response_valid:
+                    return result
+                self._trace(
+                    f"{node_id}: GCA attempt {attempt}/{max_retries} returned invalid response.",
+                    level="WARN",
+                )
+            except Exception as exc:
+                last_exc = exc
+                self._trace(
+                    f"{node_id}: GCA attempt {attempt}/{max_retries} raised {exc}.",
+                    level="WARN",
+                )
+            if attempt < max_retries:
+                time.sleep(1)
+
+        err = f"{node_id}: GCA failed after {max_retries} attempt(s)."
+        if last_exc:
+            err += f" Last error: {last_exc}"
+        raise NodeExecutionError(err)
+
+    # ── F-009: critical_globs enforcement ────────────────────────────────
+
+    def _load_ruleset(self) -> dict:
+        if self._ruleset is None:
+            if _RULESET_PATH.exists():
+                try:
+                    self._ruleset = yaml.safe_load(_RULESET_PATH.read_text(encoding="utf-8")) or {}
+                except Exception as exc:
+                    self._trace(f"ruleset.yaml load failed: {exc}", level="WARN")
+                    self._ruleset = {}
+            else:
+                self._ruleset = {}
+        return self._ruleset
+
+    def _enforce_critical_globs(self) -> None:
+        """
+        @brief F-009 — Check that workspace contains files matching critical_globs.
+
+        Only enforces when the workspace path is a real directory.
+        Logs warnings (does not raise) for missing patterns so CI is not blocked
+        on projects that legitimately omit certain file types.
+        """
+        ruleset = self._load_ruleset()
+        globs = ruleset.get("critical_globs", [])
+        if not globs:
+            return
+        workspace = Path(self.config.get("workspace_path", "."))
+        if not workspace.is_dir():
+            return
+        exempt = ruleset.get("exempt_patterns", [])
+        for pattern in globs:
+            # removeprefix("**/") strips exactly the two-star-slash prefix as a
+            # string; lstrip("**/") would mis-strip chars and turn "**/*.c" → ".c"
+            glob_suffix = pattern.removeprefix("**/")
+            matches = [
+                p for p in workspace.rglob(glob_suffix)
+                if not any(p.match(ex) for ex in exempt)
+            ]
+            if not matches:
+                self._trace(
+                    f"F-009: No files matching '{pattern}' found in workspace '{workspace}'.",
+                    level="WARN",
+                )
+
     # ── Node execution entry point ─────────────────────────────────────────
 
     def run_node(self, node_id: str) -> NodeResult:
-        """
-        @brief Execute a single V-cycle node by ID.
-
-        @param node_id  e.g. "S1N1", "S2N1", "S6N1"
-        @return NodeResult with status, output, and artifact paths.
-
-        @raises ConfigValidationError when required config fields are absent.
-        @raises NodeExecutionError    when GCA call or artifact write fails.
-        @raises WorkflowAbortedError  when user rejects a human review gate.
-        """
+        """@brief Execute a single V-cycle node by ID."""
         self._trace(f"Starting node execution: {node_id}.")
         self.on_node_started(node_id)
 
@@ -185,10 +242,7 @@ class DevNexOrchestrator:
         return result
 
     def run_all(self, progress_callback: Callable[[int, str], None] | None = None) -> list[NodeResult]:
-        """
-        @brief Execute all nodes S1N1 → S9N1 sequentially.
-        Mirrors Int_Agent Orchestrator.run_gui_resolve_flow() progress pattern.
-        """
+        """@brief Execute all nodes S1N1 -> S9N1 sequentially."""
         all_nodes = [
             "S1N1", "S1N2", "S1N3", "S1N4",
             "S2N1", "S2N2",
@@ -208,6 +262,31 @@ class DevNexOrchestrator:
         cb(100, "V-cycle complete.")
         return results
 
+    # ── F-008: WorkflowEngine bridge ──────────────────────────────────────
+
+    def run_workflow(self, workflow_path: str, inputs: dict | None = None) -> str:
+        """
+        @brief F-008 — Execute an AF.json workflow graph via WorkflowEngine.
+
+        Bridges the WorkflowEngine (AF.json graph executor) with the
+        DevNexOrchestrator so both execution paths share the same GCA bridge
+        and callbacks.
+
+        @param workflow_path Path to an AF.json workflow definition.
+        @param inputs        Template substitution variables for {{nodeId.output.port}}.
+        @return Raw LLM response from the last sendPrompt node.
+        """
+        from core.workflow_engine import WorkflowEngine
+
+        engine = WorkflowEngine(
+            gca_bridge=self.gca_invoker,
+            on_node_start=lambda nid, label: self.on_node_started(nid),
+            on_node_complete=lambda nid, resp: self._trace(f"WF node '{nid}' complete."),
+            on_human_review=lambda nid, data: self.on_human_review(nid, data.get("message", "")),
+        )
+        self._trace(f"F-008: Executing workflow '{workflow_path}'.")
+        return engine.execute(workflow_path, inputs or {})
+
     # ── Stage implementations ──────────────────────────────────────────────
 
     def _run_s1n1(self) -> NodeResult:
@@ -216,20 +295,20 @@ class DevNexOrchestrator:
             "SWC_name", "G_SWDD_TEMP", "SWC_name_C", "SWC_name_H",
             "SWC_name_TEMP_LLD", "SWC_name_HLD", "lds_file", "map_file",
         ])
+        # F-010: validate workspace path before any file resolution
+        self.run_context.validate_workspace()
+        # F-009: warn on missing critical file patterns
+        self._enforce_critical_globs()
+
         swc = self.config["SWC_name"]
         self._trace(f"S1N1: Building LLD generation prompt for SWC '{swc}'.")
 
         workspace = Path(self.config.get("workspace_path", "."))
-
-        # Resolve all configured file paths once so prompt placeholders and
-        # attached-file metadata use the same canonical paths.
         resolved: dict[str, Path] = {
             key: self._resolve_workspace_path(self.config[key], workspace)
             for key in LLD_INPUT_FILE_KEYS
         }
 
-        # Bug 1 fix: replace placeholders with full absolute paths so the LLM
-        # receives the real file location, not just a bare filename.
         path_config = dict(self.config)
         for k, p in resolved.items():
             path_config[k] = str(p)
@@ -237,9 +316,6 @@ class DevNexOrchestrator:
         prompt_template = self._load_prompt("lld_gen_v1.md")
         prompt = self._render_prompt(prompt_template, path_config)
 
-        # Bug 2 fix: embed file contents directly in the prompt (Int_Agent pattern).
-        # GeminiController has no reliable "attach file" API — content must be
-        # included in the prompt text so GCA can see it in context.
         content_sections: list[str] = []
         for k in LLD_EMBEDDED_CONTEXT_KEYS:
             p = resolved[k]
@@ -250,23 +326,22 @@ class DevNexOrchestrator:
                 )
                 self._trace(f"S1N1: Embedded context file '{p.name}' ({len(text)} chars).")
             else:
-                content_sections.append(
-                    f"\n\n### FILE: {p.name}  ({p})\n[FILE NOT FOUND]"
+                # F-005: raise instead of silently continuing with [FILE NOT FOUND]
+                raise ArtifactMissingError(
+                    f"S1N1: Required context file '{p}' (config key='{k}') not found. "
+                    "Verify all file paths in the Config tab."
                 )
-                self._trace(f"S1N1: Context file not found — '{p}'.", level="WARN")
 
         prompt += "\n\n## Attached Input Files\n" + "".join(content_sections)
-
         attached_files = [str(resolved[k]) for k in LLD_EMBEDDED_CONTEXT_KEYS]
-        self._trace(f"S1N1: Invoking GCA (prompt={len(prompt)} chars, context_files={len(attached_files)}).")
-        result = self.gca_invoker.invoke_prompt(prompt, attached_files)
+        self._trace(f"S1N1: Invoking GCA (prompt={len(prompt)} chars).")
 
-        if not result.is_response_valid:
-            raise NodeExecutionError("S1N1: GCA returned invalid response.")
+        # F-002: retry wrapper
+        result = self._invoke_with_retry(prompt, attached_files, "S1N1")
 
         out_path = self._artifacts_dir / f"{swc}_TEMP_LLD_updated.csv"
         out_path.write_text(result.raw_response, encoding="utf-8")
-        self._trace(f"S1N1: Artifact written → '{out_path}'.", level="SUCCESS")
+        self._trace(f"S1N1: Artifact written -> '{out_path}'.", level="SUCCESS")
 
         return NodeResult(
             node_id="S1N1", status="complete",
@@ -308,30 +383,32 @@ class DevNexOrchestrator:
     def _run_s1n4(self) -> NodeResult:
         """@brief S1N4 — Categorize LLD requirements: Functional vs Non-Functional."""
         self._validate_config(["SWC_name", "SWC_nameInspBaseLLD"])
-        swc = self.config["SWC_name"]
+        swc       = self.config["SWC_name"]
         insp_file = self.config["SWC_nameInspBaseLLD"]
         self._trace(f"S1N4: Categorizing requirements from '{insp_file}'.")
 
-        insp_content = ""
-        if Path(insp_file).exists():
-            insp_content = Path(insp_file).read_text(encoding="utf-8")
+        # F-005: raise when input file missing (was: silently continue with empty content)
+        insp_path = Path(insp_file)
+        if not insp_path.exists():
+            raise ArtifactMissingError(
+                f"S1N4: LLD inspection file not found at '{insp_path}'. "
+                "Complete S1N2/S1N3 first to produce the file."
+            )
+        insp_content = insp_path.read_text(encoding="utf-8")
 
-        prompt = (
-            "You are a software requirements engineer.\n"
-            "Categorize the following LLD requirements into:\n"
-            "  - FUNCTIONAL: states core functionality testable by unit test tools\n"
-            "  - NON_FUNCTIONAL: configuration, shared variables, KPIs (human-review only)\n\n"
-            f"Input requirements:\n{insp_content}\n\n"
-            "Output: CSV with columns: REQ_ID, CATEGORY, DESCRIPTION"
-        )
+        # F-006: load template instead of inline hardcoded prompt
+        prompt_template = self._load_prompt("categorize_reqs_v1.md")
+        prompt = self._render_prompt(prompt_template, {
+            **self.config,
+            "SWC_nameInspBaseLLD": insp_content,
+        })
 
-        result = self.gca_invoker.invoke_prompt(prompt, [insp_file])
-        if not result.is_response_valid:
-            raise NodeExecutionError("S1N4: GCA categorization returned invalid response.")
+        # F-002: retry wrapper
+        result = self._invoke_with_retry(prompt, [insp_file], "S1N4")
 
         out_path = self._artifacts_dir / f"{swc}_FUNC_req.csv"
         out_path.write_text(result.raw_response, encoding="utf-8")
-        self._trace(f"S1N4: Functional requirements written → '{out_path}'.", level="SUCCESS")
+        self._trace(f"S1N4: Functional requirements written -> '{out_path}'.", level="SUCCESS")
 
         return NodeResult(
             node_id="S1N4", status="complete",
@@ -339,24 +416,21 @@ class DevNexOrchestrator:
         )
 
     def _run_s2n1(self) -> NodeResult:
-        """@brief S2N1 — Embed LLD requirement references in source code as structured comments."""
+        """@brief S2N1 — Embed LLD requirement references in source code."""
         self._validate_config(["SWC_name", "SWC_name_C"])
-        swc = self.config["SWC_name"]
+        swc        = self.config["SWC_name"]
         source_file = self.config["SWC_name_C"]
         func_req_file = str(self._artifacts_dir / f"{swc}_FUNC_req.csv")
 
         self._trace(f"S2N1: Embedding LLD references into '{source_file}'.")
-
         prompt_template = self._load_prompt("code_link_v1.md")
         prompt = self._render_prompt(prompt_template, self.config)
 
-        result = self.gca_invoker.invoke_prompt(prompt, [source_file, func_req_file])
-        if not result.is_response_valid:
-            raise NodeExecutionError("S2N1: GCA code linking returned invalid response.")
+        result = self._invoke_with_retry(prompt, [source_file, func_req_file], "S2N1")
 
         out_path = self._artifacts_dir / f"updated_{swc}.c"
         out_path.write_text(result.raw_response, encoding="utf-8")
-        self._trace(f"S2N1: Annotated source written → '{out_path}'.", level="SUCCESS")
+        self._trace(f"S2N1: Annotated source written -> '{out_path}'.", level="SUCCESS")
 
         return NodeResult(
             node_id="S2N1", status="complete",
@@ -380,71 +454,96 @@ class DevNexOrchestrator:
         )
 
     def _run_s3n1(self) -> NodeResult:
-        """@brief S3N1 — Generate LLD→Code traceability report."""
+        """@brief S3N1 — Generate LLD->Code traceability report.
+
+        F-001: Output renamed to LLD_Code_Trace_Matrix.csv to match trace_loader._CSV_MAP.
+        F-007: Prompt loaded from lld_code_trace_v1.md template.
+        """
         swc = self.config.get("SWC_name", "SWC")
-        self._trace("S3N1: Generating LLD → Code traceability report.")
+        self._trace("S3N1: Generating LLD -> Code traceability report.")
         source_file = str(self._artifacts_dir / f"updated_{swc}.c")
         func_req    = str(self._artifacts_dir / f"{swc}_FUNC_req.csv")
-        prompt = (
-            "Generate a CSV traceability report linking LLD requirement IDs to "
-            "code function names and line numbers.\n"
-            "Columns: REQ_ID, FUNCTION_NAME, FILE, LINE_NUMBER, COVERAGE_STATUS"
-        )
-        result = self.gca_invoker.invoke_prompt(prompt, [source_file, func_req])
-        out_path = self._artifacts_dir / "LLD_Code_Trace_Report.csv"
+
+        # F-007: template instead of inline prompt
+        prompt_template = self._load_prompt("lld_code_trace_v1.md")
+        prompt = self._render_prompt(prompt_template, {**self.config, "SWC_name": swc})
+
+        result = self._invoke_with_retry(prompt, [source_file, func_req], "S3N1")
+
+        # F-001: was LLD_Code_Trace_Report.csv — renamed to match trace_loader._CSV_MAP
+        out_path = self._artifacts_dir / "LLD_Code_Trace_Matrix.csv"
         out_path.write_text(result.raw_response, encoding="utf-8")
-        self._trace(f"S3N1: Trace report written → '{out_path}'.", level="SUCCESS")
+        self._trace(f"S3N1: Trace report written -> '{out_path}'.", level="SUCCESS")
         return NodeResult(
             node_id="S3N1", status="complete",
             output=result.raw_response, artifacts=[str(out_path)],
         )
 
     def _run_s4n1(self) -> NodeResult:
-        """@brief S4N1 — Map LLD requirements to parent HLD items."""
+        """@brief S4N1 — Map LLD requirements to parent HLD items.
+
+        F-001: JSON still written as HLD_LLD_Links.json; CSV HLD_LLD_Trace_Matrix.csv
+               also written so trace_loader can consume it directly.
+        F-007: Prompt loaded from hld_lld_links_v1.md template.
+        """
         swc = self.config.get("SWC_name", "SWC")
         self._trace("S4N1: Linking LLD requirements to HLD items.")
         hld_file = self.config.get("SWC_name_HLD", "")
         func_req = str(self._artifacts_dir / f"{swc}_FUNC_req.csv")
-        prompt = (
-            "Map each LLD requirement ID to its parent HLD requirement ID.\n"
-            "Output JSON array: [{\"lld_id\": ..., \"hld_id\": ..., \"link_type\": ..., \"rationale\": ...}]"
-        )
-        result = self.gca_invoker.invoke_prompt(prompt, [hld_file, func_req])
-        out_path = self._artifacts_dir / "HLD_LLD_Links.json"
-        out_path.write_text(result.raw_response, encoding="utf-8")
-        self._trace(f"S4N1: HLD→LLD links written → '{out_path}'.", level="SUCCESS")
+
+        # F-007: template instead of inline prompt
+        prompt_template = self._load_prompt("hld_lld_links_v1.md")
+        prompt = self._render_prompt(prompt_template, {**self.config, "SWC_name": swc})
+
+        result = self._invoke_with_retry(prompt, [hld_file, func_req], "S4N1")
+
+        # Keep JSON for backward compat
+        json_path = self._artifacts_dir / "HLD_LLD_Links.json"
+        json_path.write_text(result.raw_response, encoding="utf-8")
+
+        # F-001: also write CSV that trace_loader expects (HLD_LLD_Trace_Matrix.csv)
+        csv_path = self._artifacts_dir / "HLD_LLD_Trace_Matrix.csv"
+        try:
+            links = json.loads(result.raw_response)
+            if isinstance(links, list):
+                rows = ["HLD_ID,LLD_ID,LINK_TYPE,HLD_TITLE,LLD_TITLE"]
+                for lnk in links:
+                    rows.append(
+                        f"{lnk.get('hld_id','')},{lnk.get('lld_id','')},"
+                        f"{lnk.get('link_type','link')},,")
+                csv_path.write_text("\n".join(rows), encoding="utf-8")
+        except (json.JSONDecodeError, TypeError):
+            csv_path.write_text(result.raw_response, encoding="utf-8")
+
+        self._trace(f"S4N1: HLD->LLD links written -> '{json_path}', '{csv_path}'.", level="SUCCESS")
         return NodeResult(
             node_id="S4N1", status="complete",
-            output=result.raw_response, artifacts=[str(out_path)],
+            output=result.raw_response, artifacts=[str(json_path), str(csv_path)],
         )
 
     def _run_s5n1(self) -> NodeResult:
-        """@brief S5N1 — Generate full downstream Code→LLD→HLD traceability matrix."""
+        """@brief S5N1 — Generate full downstream Code->LLD->HLD traceability matrix.
+
+        F-001: Output renamed to Full_Downstream_Trace.csv to match trace_loader._CSV_MAP.
+        """
         self._trace("S5N1: Building full downstream traceability matrix.")
-        trace_report = str(self._artifacts_dir / "LLD_Code_Trace_Report.csv")
+        trace_report = str(self._artifacts_dir / "LLD_Code_Trace_Matrix.csv")
         hld_links    = str(self._artifacts_dir / "HLD_LLD_Links.json")
-        prompt = (
-            "Combine HLD→LLD and LLD→Code links into a single traceability matrix CSV.\n"
-            "Columns: HLD_ID, LLD_ID, CODE_FUNCTION, FILE, LINE, COVERAGE_STATUS"
-        )
-        result = self.gca_invoker.invoke_prompt(prompt, [trace_report, hld_links])
-        out_path = self._artifacts_dir / "HLD_LLD_Code_Trace_Matrix.csv"
+        prompt_template = self._load_prompt("full_trace_v1.md")
+        prompt = self._render_prompt(prompt_template, self.config)
+        result = self._invoke_with_retry(prompt, [trace_report, hld_links], "S5N1")
+
+        # F-001: was HLD_LLD_Code_Trace_Matrix.csv — renamed to Full_Downstream_Trace.csv
+        out_path = self._artifacts_dir / "Full_Downstream_Trace.csv"
         out_path.write_text(result.raw_response, encoding="utf-8")
-        self._trace(f"S5N1: Full trace matrix written → '{out_path}'.", level="SUCCESS")
+        self._trace(f"S5N1: Full trace matrix written -> '{out_path}'.", level="SUCCESS")
         return NodeResult(
             node_id="S5N1", status="complete",
             output=result.raw_response, artifacts=[str(out_path)],
         )
 
     def _run_s6n1(self) -> NodeResult:
-        """
-        @brief S6N1 — Generate VectorCAST test artifacts, then wait for .TST output.
-
-        @details
-        Two sub-phases:
-          1. GCA generates test.bat and test input scaffolding.
-          2. Human review gate — user runs VectorCAST and waits for .TST files.
-        """
+        """@brief S6N1 — Generate VectorCAST test artifacts + wait for .TST output."""
         swc = self.config.get("SWC_name", "SWC")
         self._trace("S6N1: Generating VectorCAST test artifacts via GCA.")
         source_file = str(self._artifacts_dir / f"updated_{swc}.c")
@@ -455,15 +554,15 @@ class DevNexOrchestrator:
             f"for SWC '{swc}'. Include all functional requirements from the CSV.\n"
             "Output: test.bat content followed by a ---SEPARATOR--- then the test environment config."
         )
-        result = self.gca_invoker.invoke_prompt(prompt, [source_file, func_req])
+        result = self._invoke_with_retry(prompt, [source_file, func_req], "S6N1")
         bat_path = self._artifacts_dir / "test.bat"
         bat_path.write_text(result.raw_response, encoding="utf-8")
-        self._trace(f"S6N1: test.bat written → '{bat_path}'.")
+        self._trace(f"S6N1: test.bat written -> '{bat_path}'.")
 
         msg = (
             f"Run VectorCAST using the generated 'test.bat' file.\n\n"
             f"The platform will wait here until .TST files are produced.\n"
-            f"Once execution is complete and .TST files are available in the workspace, click Continue."
+            f"Once execution is complete and .TST files are available, click Continue."
         )
         self._trace("S6N1: Waiting for VectorCAST .TST output — human review gate.")
         approved = self.on_human_review("S6N1", msg)
@@ -490,10 +589,10 @@ class DevNexOrchestrator:
             "a formal Unit Test Documentation (UTD) in Markdown format.\n"
             "Include: test case ID, description, inputs, expected vs actual outputs, PASS/FAIL status, coverage %."
         )
-        result = self.gca_invoker.invoke_prompt(prompt, [str(f) for f in tst_files])
+        result = self._invoke_with_retry(prompt, [str(f) for f in tst_files], "S7N1")
         out_path = self._artifacts_dir / f"{swc}_UTD.md"
         out_path.write_text(result.raw_response, encoding="utf-8")
-        self._trace(f"S7N1: UTD written → '{out_path}'.", level="SUCCESS")
+        self._trace(f"S7N1: UTD written -> '{out_path}'.", level="SUCCESS")
         return NodeResult(
             node_id="S7N1", status="complete",
             output=result.raw_response, artifacts=[str(out_path)],
@@ -503,48 +602,120 @@ class DevNexOrchestrator:
         """@brief S8N1 — Link UTD test cases to LLD requirements."""
         swc = self.config.get("SWC_name", "SWC")
         self._trace("S8N1: Linking UTD test cases to LLD requirements.")
-        utd_file  = str(self._artifacts_dir / f"{swc}_UTD.md")
-        func_req  = str(self._artifacts_dir / f"{swc}_FUNC_req.csv")
+        utd_file = str(self._artifacts_dir / f"{swc}_UTD.md")
+        func_req = str(self._artifacts_dir / f"{swc}_FUNC_req.csv")
         prompt = (
             "Map each unit test case to its corresponding LLD functional requirement.\n"
             "Output JSON array: [{\"test_case_id\": ..., \"req_id\": ..., \"test_result\": ..., \"coverage_contribution\": ...}]"
         )
-        result = self.gca_invoker.invoke_prompt(prompt, [utd_file, func_req])
+        result = self._invoke_with_retry(prompt, [utd_file, func_req], "S8N1")
         out_path = self._artifacts_dir / "UTD_LLD_Links.json"
         out_path.write_text(result.raw_response, encoding="utf-8")
-        self._trace(f"S8N1: UTD→LLD links written → '{out_path}'.", level="SUCCESS")
+        self._trace(f"S8N1: UTD->LLD links written -> '{out_path}'.", level="SUCCESS")
         return NodeResult(
             node_id="S8N1", status="complete",
             output=result.raw_response, artifacts=[str(out_path)],
         )
 
     def _run_s9n1(self) -> NodeResult:
-        """@brief S9N1 — Consolidate full traceability matrix: HLD→LLD→Code→Test→UTD."""
+        """@brief S9N1 — Consolidate full traceability matrix: HLD->LLD->Code->Test->UTD."""
         self._trace("S9N1: Building final full traceability matrix.")
         inputs = [
-            str(self._artifacts_dir / "HLD_LLD_Code_Trace_Matrix.csv"),
+            str(self._artifacts_dir / "Full_Downstream_Trace.csv"),
             str(self._artifacts_dir / "UTD_LLD_Links.json"),
         ]
         prompt_template = self._load_prompt("full_trace_v1.md")
         prompt = self._render_prompt(prompt_template, self.config)
-        result = self.gca_invoker.invoke_prompt(prompt, inputs)
+        result = self._invoke_with_retry(prompt, inputs, "S9N1")
         out_path = self._artifacts_dir / "Full_Traceability_Matrix.csv"
         out_path.write_text(result.raw_response, encoding="utf-8")
-        self._trace(f"S9N1: Full traceability matrix written → '{out_path}'.", level="SUCCESS")
+        self._trace(f"S9N1: Full traceability matrix written -> '{out_path}'.", level="SUCCESS")
         return NodeResult(
             node_id="S9N1", status="complete",
             output=result.raw_response, artifacts=[str(out_path)],
         )
 
+    # ── UC 4.4 Post-Merge Semantic Check ─────────────────────────────────────
+
+    def run_uc4_4_semantic_check(
+        self,
+        map_file: str | None = None,
+        lds_file: str | None = None,
+        asil_level: str | None = None,
+    ) -> NodeResult:
+        """@brief UC 4.4 — Post-merge semantic memory map overlap check."""
+        from skills.automotive.uc4_4_skill import UC44SemanticConflictSkill
+        from gcl.asil_gate import SemanticConflictError
+
+        override_cfg: dict = {}
+        if map_file:
+            override_cfg["map_file"] = map_file
+        if lds_file:
+            override_cfg["lds_file"] = lds_file
+        if asil_level:
+            override_cfg["asil_level"] = asil_level
+
+        merged_cfg = {**self.config, **override_cfg}
+
+        class _CtxProxy:
+            config = merged_cfg
+
+            def get_artifacts_path(self) -> Path:
+                return self.run_context._artifacts_dir
+
+            def validate_workspace(self) -> None:
+                pass  # proxy skips workspace validation for UC4.4
+
+        ctx_proxy = _CtxProxy()
+        ctx_proxy.run_context = self
+
+        self._trace("UC4.4: Starting post-merge semantic memory map check.")
+
+        skill = UC44SemanticConflictSkill(
+            run_context=ctx_proxy,
+            gca_invoker=self.gca_invoker,
+            on_log=self.on_log,
+        )
+
+        try:
+            summary = skill.run()
+        except SemanticConflictError as exc:
+            self._trace(f"UC4.4: HARD BLOCK — {exc}", level="ERROR")
+            result = NodeResult(
+                node_id="UC4_4_POST_MERGE",
+                status="error",
+                output=str(exc),
+                artifacts=[
+                    str(self._artifacts_dir / "section_layout.json"),
+                    str(self._artifacts_dir / "overlap_report.json"),
+                    str(self._artifacts_dir / "asil_gate_decision.json"),
+                    str(self._artifacts_dir / "semantic_conflict_report.md"),
+                ],
+                errors=[str(exc)],
+            )
+            self.on_node_complete(result)
+            raise
+
+        status  = summary.get("status", "pass")
+        overlap = summary.get("has_overlap", False)
+        self._trace(
+            f"UC4.4: Complete | status={status} | overlap={overlap}",
+            level="SUCCESS" if status == "pass" else "WARN",
+        )
+
+        artifacts = [v for k, v in summary.items() if k.endswith("_path") and v]
+        result = NodeResult(
+            node_id="UC4_4_POST_MERGE",
+            status=status,
+            output=summary.get("gca_report", "No overlap detected."),
+            artifacts=artifacts,
+        )
+        self.on_node_complete(result)
+        return result
+
     # ── Helpers ───────────────────────────────────────────────────────────
 
     def _validate_config(self, required_keys: list[str]) -> None:
-        """
-        @brief Ensure required configuration keys are populated.
-
-        @param required_keys Internal config keys required by a node.
-        @raises ConfigValidationError When one or more required values are missing.
-        """
         missing = [k for k in required_keys if not self.config.get(k)]
         if missing:
             raise ConfigValidationError(
@@ -553,32 +724,18 @@ class DevNexOrchestrator:
             )
 
     def _load_prompt(self, filename: str) -> str:
-        """
-        @brief Load a prompt template from the package prompts directory.
-
-        @param filename Prompt template filename.
-        @return Template text, or a fallback marker when the file is missing.
-        """
         prompt_path = Path(__file__).parent.parent / "prompts" / filename
         if prompt_path.exists():
             return prompt_path.read_text(encoding="utf-8")
         return f"[Prompt template '{filename}' not found — using default instructions]"
 
     def _render_prompt(self, template: str, context: dict) -> str:
-        """@brief Replace {{KEY}} placeholders with config values."""
         for key, value in context.items():
             template = template.replace(f"{{{{{key}}}}}", str(value))
         return template
 
     @staticmethod
     def _resolve_workspace_path(value: str, workspace: Path) -> Path:
-        """
-        @brief Resolve a config file path against the active workspace.
-
-        @param value Raw file path from configuration.
-        @param workspace Workspace root for relative file paths.
-        @return Absolute path when `value` is relative; original path when absolute.
-        """
         candidate_path = Path(value)
         if candidate_path.is_absolute():
             return candidate_path
@@ -586,7 +743,6 @@ class DevNexOrchestrator:
 
     @staticmethod
     def _default_human_review(node_id: str, message: str) -> bool:
-        """@brief CLI fallback for human review gates."""
         print(f"\n[DevNex] ── HUMAN REVIEW REQUIRED: {node_id} ──")
         print(message)
         answer = input("\nType 'yes' to continue, 'no' to abort: ").strip().lower()

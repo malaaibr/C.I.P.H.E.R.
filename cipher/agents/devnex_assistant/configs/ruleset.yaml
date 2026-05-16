@@ -1,34 +1,29 @@
-# DevNex Assistant — project ruleset
-# Controls which directories and file types are excluded from artifact scans.
+# CIPHER DevNex Ruleset — F-009
+# critical_globs: files that MUST exist in workspace_path before a full V-cycle run.
+# The orchestrator's _enforce_critical_globs() method checks these before S1N1.
 
-ignore_dirs:
-  - .git
-  - __pycache__
-  - .venv
-  - venv
-  - build
-  - dist
-  - devnex_ws_*
+version: "1.0"
 
-# File extensions considered source artifacts
-source_extensions:
-  - .c
-  - .h
-  - .csv
-  - .json
-  - .md
-  - .lds
-  - .map
-
-# Safety-critical path patterns — GCA invocations on these require extra review
 critical_globs:
+  # Primary source component files
   - "**/*.c"
   - "**/*.h"
-  - "**/migrations/**"
-  - "**/security/**"
+  # Linker artifacts (required by UC 4.4)
+  - "**/*.ld"
+  - "**/*.map"
 
-# Thresholds
-line_change_medium_threshold: 80
+# Files exempt from critical_glob enforcement (generated intermediates)
+exempt_patterns:
+  - "generated_artifacts/**"
+  - "build/**"
+  - ".venv/**"
+
+# ASIL-gated operations — these trigger AsilGate evaluation
+asil_gated_nodes:
+  - S1N1   # LLD generation
+  - S6N1   # VectorCAST test generation
+  - S9N1   # Full traceability matrix
+  - UC4_4  # Post-merge semantic check
+
+# Maximum GCA retry attempts (F-002)
 max_gca_retries: 3
-bridge_port: 37778
-bridge_timeout_seconds: 120

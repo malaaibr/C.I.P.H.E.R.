@@ -1,198 +1,257 @@
-# DevNex Assistant High-Level Design
+# DevNex Assistant — High-Level Design
+
+> **Document revision:** Sprint 0 complete (2026-05-16)
+> Incorporates Sprint 0 gap fixes F-001…F-010, UC 3.1, UC 4.1, UC 4.4,
+> ASDLC process integration, and the three-LLM backend architecture.
+
+---
 
 ## 1. System Overview
 
-DevNex Assistant is a local desktop and CLI automation tool for embedded software V-cycle workflows. It supports AI-assisted Low-Level Design (LLD) generation, LLD requirement categorization, source-code linking, traceability reporting, VectorCAST/Tessy test artifact generation, Unit Test Documentation (UTD), and final HLD-to-LLD-to-code-to-test traceability. The primary users are developers and verification engineers working with SWC source, HLD/LLD files, requirement-management handoffs, and GCA/VS Code automation.
+DevNex Assistant is the AI-powered V-cycle workflow engine inside the CIPHER platform.
+It automates embedded SWC development from LLD generation through final traceability,
+with ISO 26262 safety gates and MISRA-C:2012 compliance review built in.
 
 The system runs as:
+- A **PyQt6 desktop application** (`main_gui.py` → `interfaces/gui/`)
+- A **Click CLI** (`devnex.py` → `interfaces/cli/`)
+- A **library** importable by orchestration harnesses, CI pipelines, and test fixtures
 
-- A Click CLI through `cipher/agents/devnex_assistant/devnex.py` and `cipher/agents/devnex_assistant/interfaces/cli/cli_commands.py`.
-- A PyQt6 desktop app through `cipher/agents/devnex_assistant/main_gui.py` and `cipher/agents/devnex_assistant/interfaces/gui/app.py`.
-- A local automation client that invokes GCA through VS Code WebSocket integration or an HTTP bridge.
+---
 
 ## 2. Architectural Style
 
-The codebase follows a layered orchestration style:
+Six logical layers, strict downward dependency:
 
-- Interface layer: CLI and PyQt6 GUI collect user actions.
-- Orchestration layer: `DevNexOrchestrator` coordinates fixed V-cycle nodes.
-- Integration layer: GCA/VS Code bridge and WebSocket invocation.
-- Persistence layer: JSON-backed config, state, and artifacts.
-- Skill layer: intent-to-node adapters for future conversational workflows.
-- Utility/UI layer: logging, constants, styles, and custom widgets.
+```
+┌─────────────────────────────────────────────────┐
+│  Interface Layer      CLI · PyQt6 GUI            │
+├─────────────────────────────────────────────────┤
+│  Orchestration Layer  DevNexOrchestrator          │
+├─────────────────────────────────────────────────┤
+│  Skill Layer          Intent → UC dispatcher     │
+├─────────────────────────────────────────────────┤
+│  LLM Backend Layer    Ollama · Gemini · GCA      │  ← Sprint 0 new
+├─────────────────────────────────────────────────┤
+│  Integration Layer    GCA/VS Code WebSocket       │
+├─────────────────────────────────────────────────┤
+│  Persistence Layer    Config · State · Artifacts │
+└─────────────────────────────────────────────────┘
+```
 
-The main runtime path is a sequential pipeline from `S1N1` to `S9N1`, implemented in `DevNexOrchestrator.run_all()` at `cipher/agents/devnex_assistant/core/orchestrator.py:148`. A separate graph executor exists in `cipher/agents/devnex_assistant/core/workflow_engine.py`, but current CLI and GUI flows use the orchestrator directly.
+---
 
-## 3. Layer Map
+## 3. Layer Map (Sprint 0 updated)
 
 | Layer | Files | Responsibility |
-| --- | --- | --- |
-| Entrypoints | `devnex.py`, `main_gui.py`, `generate_icon.py` | Start CLI, GUI, or icon generation scripts. |
-| CLI | `interfaces/cli/cli_commands.py` | Defines `run-stage`, `run-all`, `status`, and `config`. |
-| GUI | `interfaces/gui/**/*.py` | Presents workflow canvas, config, trace, output log, settings, splash, and review dialogs. |
-| Orchestration | `core/orchestrator.py` | Dispatches V-cycle nodes, validates config, builds prompts, writes artifacts, updates state. |
-| Workflow engine | `core/workflow_engine.py` | Executes AF.json-style graphs by topological order. |
-| Context and intent | `core/context_manager.py`, `core/intent_classifier.py`, `core/skill_registry.py`, `skills/*.py` | Build request context, classify raw input, and route to skill adapters. |
-| Data contracts | `core/run_context.py`, `core/orchestrator.py::NodeResult`, skill `TaskResult` dataclasses | Represent run metadata, node results, and skill results. |
-| Persistence | `persistence/*.py` | Read/write config, workflow state, and artifacts. |
-| GCA integration | `gca/bridge.py`, `gca/vscode_invoker.py` | Communicate with VS Code/GCA over WebSocket or HTTP. |
-| Tests | `tests/*.py` | Cover selected persistence, bridge, and orchestrator behavior. |
+|---|---|---|
+| Entrypoints | `devnex.py`, `main_gui.py` | CLI/GUI bootstrap |
+| CLI | `interfaces/cli/cli_commands.py` | `run-stage`, `run-all`, `status`, `config` |
+| GUI | `interfaces/gui/**/*.py` | Workflow canvas, config, trace, log, settings, review dialogs |
+| Orchestration | `core/orchestrator.py` | V-cycle node dispatch, config validation, artifact naming, GCA retry, ruleset enforcement |
+| Workflow engine | `core/workflow_engine.py` | AF.json graph executor (topological sort + serviceId dispatch) |
+| Intent/Context | `core/intent_classifier.py`, `core/context_manager.py` | Rule-based input classification |
+| Skill registry | `core/skill_registry.py`, `skills/**` | UC-to-handler routing |
+| UC 3.1 | `skills/automotive/asil_review_skill.py` | Three-phase ASIL code review pipeline |
+| UC 4.1 | `skills/automotive/standards_qa_skill.py` | Hybrid RAG standards Q&A |
+| UC 4.4 | `skills/uc4_4/` | RAM overlap detection + ASIL-D gate |
+| LLM backends | `gca/vscode_invoker.py`, Ollama REST, Gemini CLI | Three-backend triangle |
+| Persistence | `persistence/*.py`, `configs/ruleset.yaml` | Config, state, artifacts, ruleset |
+| Errors | `core/errors.py` | Typed exception hierarchy |
+| Logging | `core/console_logging.py` | ANSI-coloured structured logs |
+| Tests | `tests/*.py` | 169 pytest tests, 100% passing |
 
-Dependency direction is generally:
+---
 
-```text
-CLI/GUI -> core.orchestrator -> gca + persistence
-skills -> core.orchestrator
-tests -> implementation modules
+## 4. Three-LLM Backend Architecture ★ Sprint 0
+
+Each UC uses the backend best suited to its latency/capability profile:
+
+```
+User Input
+    │
+    ├─► TRIAGE (Ollama :11434, local)
+    │     Fast classification, violation detection, initial scoring
+    │     Model: llama3.2 / mistral (configurable)
+    │
+    ├─► PLAN (Gemini CLI subprocess)
+    │     Structured planning, fix strategy, standards lookup
+    │     Invoked as: gemini --model gemini-2.0-flash -p "<prompt>"
+    │
+    └─► CODE_GEN (GCA via VS Code WebSocket ws://localhost:37778)
+          Final code generation, diff production, full context
+          Retries: configurable via max_gca_retries (default 3)
 ```
 
-## 4. Module Responsibility Matrix
+**Backend selection by UC:**
 
-| Module | Responsibility | Key Exports | Key Dependencies |
-| --- | --- | --- | --- |
-| `devnex.py` | Top-level Click wrapper. | `cli()` | `click`, `build_cli()` |
-| `main_gui.py` | Creates `QApplication` and launches GUI. | `main()` | PyQt6, `launch_app()` |
-| `generate_icon.py` | Generates GUI icon assets. | `_pixmap_to_pil()`, `generate()` | PyQt6, Pillow, `make_hex_pixmap()` |
-| `core/orchestrator.py` | Central V-cycle pipeline. | `DevNexOrchestrator`, `NodeResult` | config/state stores, GCA invoker, errors |
-| `core/workflow_engine.py` | AF.json graph executor. | `WorkflowEngine` | subprocess, JSON, GCA bridge-like object |
-| `core/run_context.py` | Run metadata and artifact root. | `DevNexRunContext` | Pydantic |
-| `core/errors.py` | Custom exception hierarchy. | `DevNexError` subclasses | none |
-| `core/console_logging.py` | Structured console log formatting. | `format_console_log()`, `utc_timestamp()` | `ctypes`, env vars |
-| `core/intent_classifier.py` | Rule-based input classifier. | `ParsedIntent`, `IntentClassifier` | regex, logging |
-| `core/context_manager.py` | Builds runtime context from persisted state/config. | `WorkingContext`, `ContextManager` | state/config stores |
-| `core/skill_registry.py` | Registers skill adapters. | `SkillRegistry` | concrete skill classes |
-| `gca/bridge.py` | HTTP relay client for DevNex Bridge VSIX. | `DevNexBridge` | `requests`, custom errors |
-| `gca/vscode_invoker.py` | VS Code/GCA WebSocket invocation with HTTP fallback. | `DevNexGCAInvoker`, `GCAInvocationResult` | `websocket`, subprocess, sockets |
-| `persistence/config_store.py` | Project config JSON. | `ConfigStore`, `DEFAULT_CONFIG` | `json`, `Path` |
-| `persistence/state_store.py` | Workflow state JSON. | `StateStore` | `json`, `Path.home()` |
-| `persistence/artifact_writer.py` | Generic artifact helper. | `ArtifactWriter` | logging, JSON |
-| `skills/*.py` | Thin adapters from intent to orchestrator node calls. | `ISkill`, concrete skills, `TaskResult` | orchestrator injection |
-| `interfaces/cli/cli_commands.py` | CLI command group. | `build_cli()` | Click, orchestrator |
-| `interfaces/gui/app.py` | GUI bootstrap sequence. | `launch_app()` | splash, main window, config modal |
-| `interfaces/gui/main_window.py` | Primary GUI controller. | `MainWindow` | panels, workers, orchestrator |
-| `interfaces/gui/workers/*.py` | Background execution threads. | `BaseWorker`, `NodeWorker`, `FullRunWorker` | Qt signals, orchestrator callbacks |
-| `interfaces/gui/panels/*.py` | Workflow, config, trace, and output panels. | GUI widgets | PyQt6, stores |
+| UC | TRIAGE (Ollama) | PLAN (Gemini) | CODE_GEN (GCA) |
+|---|---|---|---|
+| UC 3.1 ASIL Review | Phase 1 — violation detection | Phase 2 — fix plan | Phase 3 — fix diffs |
+| UC 4.1 Standards QA | Embedding generation (nomic-embed-text) | — | Answer generation |
+| UC 4.4 RAM Overlap | — | — | Report generation (optional) |
+| V-cycle S1N1…S9N1 | — | — | Primary LLM for all nodes |
 
-## 5. System Data Flow
+---
 
-### CLI Single Stage
+## 5. V-Cycle Pipeline (13 nodes)
 
-```text
-devnex.py
-  -> build_cli()
-  -> run-stage STAGE
-  -> _run_single(stage)
-  -> DevNexOrchestrator.run_node(stage)
-  -> selected _run_s*N* handler
-  -> GCA invocation or human-review gate
-  -> artifact write
-  -> StateStore.set_node_status()
+```
+S1N1 ──► S1N2 ──► S1N3 ──► S1N4
+  │                           │
+  │    LLD Generation         │ Requirement Categorisation
+  │    + Workspace Validate   │ + categorize_reqs_v1.md
+  │                           ▼
+S2N1 ──► S2N2              S2N1
+  │                           │
+  │    Code Linking            │
+  ▼                           ▼
+S3N1 ──────────────────────────► LLD_Code_Trace_Matrix.csv
+S4N1 ──────────────────────────► HLD_LLD_Trace_Matrix.csv
+S5N1 ──────────────────────────► Full_Downstream_Trace.csv
+  │
+  ▼
+S6N1 ──► S7N1 ──► S8N1 ──► S9N1
+  │         │        │        │
+Test Gen  UTD Gen  UTD Link  Full Trace
 ```
 
-### GUI Single Stage
+**Node-to-artifact canonical names (F-001):**
 
-```text
-WorkflowPanel node click
-  -> MainWindow._on_node_run_requested()
-  -> NodeWorker.start()
-  -> NodeWorker.run()
-  -> DevNexOrchestrator.run_node()
-  -> worker signals update GUI status/log/review dialog
+| Node | Output File |
+|---|---|
+| S1N1 | `{SWC}_TEMP_LLD_updated.csv` |
+| S1N4 | `{SWC}_FUNC_req.csv` |
+| S2N1 | `updated_{SWC}.c` |
+| **S3N1** ★ | **`LLD_Code_Trace_Matrix.csv`** |
+| **S4N1** ★ | **`HLD_LLD_Trace_Matrix.csv`** |
+| **S5N1** ★ | **`Full_Downstream_Trace.csv`** |
+| S7N1 | `{SWC}_UTD.md` |
+| S8N1 | `UTD_LLD_Links.json` |
+| S9N1 | `Full_Traceability_Matrix.csv` |
+
+---
+
+## 6. Safety and Quality Gates (ASDLC)
+
+Gate model aligned to ISO 26262 ASIL levels:
+
+```
+G0 — Workspace valid (F-010) + ruleset loaded (F-009)
+G1 — Sprint complete: 100% tests passing
+G2 — Artifact filenames match trace_loader contract (F-001)
+G3 — ASIL-A/B/QM: WARN allowed, HOLD on violations
+G4 — ASIL-B/C: HOLD — manual Safety Engineer sign-off
+G5 — ASIL-D: HARD_BLOCK — raises SemanticConflictError, blocks pipeline
 ```
 
-### Full V-Cycle Pipeline
+**Gated nodes:** S1N1, S6N1, S9N1, UC4_4 (from `configs/ruleset.yaml`)
 
-`DevNexOrchestrator.run_all()` executes:
+**Review gates (human-in-the-loop):** S1N2, S1N3, S2N2, S6N1
 
-```text
-S1N1 -> S1N2 -> S1N3 -> S1N4 -> S2N1 -> S2N2 ->
-S3N1 -> S4N1 -> S5N1 -> S6N1 -> S7N1 -> S8N1 -> S9N1
+---
+
+## 7. Skill Dispatch Flow
+
+```
+User utterance / CLI stage ID
+    │
+    ▼
+IntentClassifier.classify(input)  →  ParsedIntent(intent_type, vcycle_stage, skill_id)
+    │
+    ▼
+SkillRegistry.resolve(skill_id)   →  ISkill instance
+    │
+    ▼
+skill.run(...)                    →  TaskResult
+    │
+    └── internally calls DevNexOrchestrator.run_node() or UC pipeline
 ```
 
-Each node returns `NodeResult` and updates persisted workflow status.
+**Registered skills (Sprint 0):**
 
-### GCA Invocation
+| Skill ID | Class | Intent Type | Sprint |
+|---|---|---|---|
+| `lld_gen` | `LLDGenSkill` | `RUN_STAGE` | Original |
+| `code_link` | `CodeLinkSkill` | `RUN_STAGE` | Original |
+| `trace_report` | `TraceReportSkill` | `RUN_STAGE` | Original |
+| `test_gen` | `TestGenSkill` | `RUN_STAGE` | Original |
+| `full_trace` | `FullTraceSkill` | `RUN_STAGE` | Original |
+| `explain` | `ExplainSkill` | `EXPLAIN` | Sprint 0 ★ |
+| `free_form` | `FreeFormSkill` | `FREE_FORM` | Sprint 0 ★ |
+| `asil_review` | `AsilReviewSkill` | `RUN_STAGE` | Sprint 0 ★ |
+| `standards_qa` | `StandardsQASkill` | `QA` | Sprint 0 ★ |
+| `uc4_4` | UC4.4 pipeline | `RUN_STAGE` | Sprint 0 ★ |
 
-```text
-orchestrator stage
-  -> DevNexOrchestrator.gca_invoker
-  -> DevNexGCAInvoker.invoke_prompt()
-  -> temp VS Code workspace
-  -> ~/.gca_instances.json polling
-  -> WebSocket command sequence
-  -> fallback DevNexBridge HTTP POST on timeout/error
+---
+
+## 8. System Data Flows
+
+### 8.1 Standard V-Cycle Node
+```
+CLI/GUI trigger
+  → DevNexOrchestrator.run_node(node_id)
+    → validate_workspace() [F-010]
+    → _enforce_critical_globs() [F-009]
+    → _run_s*N*()
+      → _validate_config(required_keys)
+      → _load_prompt(template) + _render_prompt(context)
+      → _invoke_with_retry(prompt, files, node_id) [F-002]
+        → gca_invoker.invoke_prompt()
+          → DevNexGCAInvoker → VS Code WebSocket → GCA
+      → write artifact to _artifacts_dir
+    → StateStore.set_node_status(node_id, "complete")
 ```
 
-## 6. Entry Points
-
-| Entry Point | File | Trigger | Initiates |
-| --- | --- | --- | --- |
-| `cli()` | `cipher/agents/devnex_assistant/devnex.py:14` | `python devnex.py` | Click command group. |
-| `build_cli()` | `interfaces/cli/cli_commands.py:20` | Imported by CLI wrapper | CLI command definitions. |
-| `run_stage(stage)` | `interfaces/cli/cli_commands.py:29` | `devnex run-stage STAGE` | Single node execution. |
-| `run_all()` | `interfaces/cli/cli_commands.py:34` | `devnex run-all` | Full pipeline execution. |
-| `status()` | `interfaces/cli/cli_commands.py:51` | `devnex status` | Workflow state display. |
-| `config_cmd(show)` | `interfaces/cli/cli_commands.py:66` | `devnex config --show` | Config display/validation. |
-| `main()` | `cipher/agents/devnex_assistant/main_gui.py:10` | `python main_gui.py` | PyQt6 GUI startup. |
-| `launch_app(app)` | `interfaces/gui/app.py:6` | Called by `main()` | Splash, config modal, main window. |
-| `generate()` | `cipher/agents/devnex_assistant/generate_icon.py:35` | `python generate_icon.py` | Icon asset generation. |
-| `WorkflowEngine.execute()` | `core/workflow_engine.py:49` | Programmatic use | AF.json workflow execution. |
-
-## 7. External Boundaries
-
-| Boundary | File/Function | Operation |
-| --- | --- | --- |
-| HTTP bridge | `gca/bridge.py:55` | `POST /sendPrompt` to `http://127.0.0.1:37778`. |
-| HTTP health | `gca/bridge.py:85` | `GET /health`. |
-| WebSocket | `gca/vscode_invoker.py:57-67` | Connect/send/receive GCA commands. |
-| VS Code launch | `gca/vscode_invoker.py:218` | `subprocess.Popen()` with `code` or `code.cmd`. |
-| VS Code availability | `gca/vscode_invoker.py:328` | `subprocess.run(["code", "--version"])`. |
-| Workflow scripts | `core/workflow_engine.py:84` | `subprocess.run()` for graph script nodes. |
-| Config file | `persistence/config_store.py` | `generated_artifacts/config.json`. |
-| Workflow state | `persistence/state_store.py` | `~/.devnex/workflow_state.json`. |
-| Run artifacts | `core/orchestrator.py` | `~/.devnex/runs/{run_id}/...`. |
-| Prompt templates | `core/orchestrator.py:515` | `cipher/agents/devnex_assistant/prompts/*.md`. |
-| GCA registry | `gca/vscode_invoker.py:121,148` | `~/.gca_instances.json`. |
-| GUI settings | `interfaces/gui/settings_manager.py` | `~/.devnex/gui_settings.json`. |
-| Human input | `core/orchestrator.py:531` | CLI `input()` for review gates. |
-| File chooser | `config_panel.py`, `config_init_modal.py` | User-selected config/source paths. |
-
-## 8. Configuration and Initialization
-
-Primary project config is stored in `generated_artifacts/config.json`, with defaults defined in `persistence/config_store.py`. Required keys include SWC name, source/header paths, LLD/HLD files, linker/map files, and workspace path.
-
-GUI startup:
-
-```text
-main_gui.main()
-  -> QApplication
-  -> launch_app()
-  -> MainWindow()
-  -> SplashScreen()
-  -> ConfigInitModal()
-  -> MainWindow.show()
+### 8.2 AF.json Workflow Graph (F-008)
+```
+DevNexOrchestrator.run_workflow(path, inputs)
+  → WorkflowEngine(gca_bridge=gca_invoker, ...)
+  → WorkflowEngine.execute()
+    → _topological_sort() [Kahn's algorithm]
+    → for each node: _resolve_templates() → serviceId dispatch
 ```
 
-Orchestrator startup:
-
-```text
-DevNexOrchestrator.__init__()
-  -> StateStore()
-  -> ConfigStore()
-  -> ConfigStore.load()
-  -> run_context.get_artifacts_path()
-  -> artifact directory creation
+### 8.3 GCA Invocation with Retry (F-002)
+```
+_invoke_with_retry(prompt, files, node_id, max_retries=3)
+  for attempt in 1..max_retries:
+    result = gca_invoker.invoke_prompt(prompt, files)
+    if result.is_response_valid: return result
+    sleep(1)
+  raise NodeExecutionError("{node_id}: GCA failed after N attempts")
 ```
 
-Deferred initialization:
+---
 
-- `DevNexOrchestrator.gca_invoker` creates `DevNexGCAInvoker` only on first GCA call.
-- GUI creates the orchestrator lazily in `MainWindow._get_orchestrator()`.
+## 9. External Boundaries
 
-## 9. Current Architectural Risks
+| Boundary | Endpoint | Used By |
+|---|---|---|
+| GCA/VS Code WebSocket | `ws://localhost:37778` | All V-cycle nodes, UC 3.1 Phase 3 |
+| DevNex HTTP Bridge | `http://127.0.0.1:37778` | WebSocket fallback |
+| Ollama REST | `http://localhost:11434` | UC 3.1 Phase 1, UC 4.1 embedding + answer |
+| Gemini CLI | subprocess `gemini --model ...` | UC 3.1 Phase 2 |
+| Qdrant REST | `http://localhost:6333` | UC 4.1 dense search (optional) |
+| GNU linker `.map` | local file | UC 4.4 RAM analysis |
+| GNU linker `.ld` | local file | UC 4.4 region parsing |
+| Config JSON | `generated_artifacts/config.json` | All nodes |
+| Workflow state JSON | `~/.devnex/workflow_state.json` | StateStore |
+| Ruleset YAML | `configs/ruleset.yaml` | F-009 critical-glob enforcement |
+| GCA registry | `~/.gca_instances.json` | DevNexGCAInvoker |
+| GUI settings | `~/.devnex/gui_settings.json` | SettingsManager |
 
-- `core/orchestrator.py` owns validation, prompts, GCA calls, artifact naming, and state updates.
-- Node IDs are duplicated across orchestrator, GUI constants, and workflow metadata.
-- `StateStore.set_node_status()` is read-modify-write without locking, so parallel writers can overwrite each other.
-- Config/state invalid JSON is silently replaced with defaults or empty state.
-- `StateStore.set_node_status()` does read-modify-write without locking.
+---
+
+## 10. Architectural Risks (Sprint 0 status)
+
+| Risk | Status | Notes |
+|---|---|---|
+| Orchestrator too large (validation + prompts + GCA + artifact + state) | Open | Modularization planned Sprint 2 |
+| Node IDs duplicated across orchestrator, GUI constants, workflow metadata | Open | Single source of truth planned |
+| `StateStore` read-modify-write without file lock | Open | Single-process acceptable; lock planned Sprint 2 |
+| Invalid config/state JSON silently replaced with defaults | Open | Add validation schema Sprint 1 |
+| `gca_invoker` lazy property imports `websocket` — fails in test envs without package | **Mitigated** | Pre-seed `orch._gca_invoker = MagicMock()` in tests |
+| `rglob` on FUSE-mounted paths may miss files if pyc mtime stale | **Mitigated** | `touch` + `removeprefix` fix applied |
+| Qdrant not available in base install | **Mitigated** | BM25-only fallback; `_qdrant_ok` guards |
+| `lstrip("**/")` treated argument as char set, not prefix | **Fixed** | `removeprefix("**/")` in `_enforce_critical_globs` |

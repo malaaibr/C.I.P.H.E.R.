@@ -3,29 +3,36 @@
 from __future__ import annotations
 
 import datetime
+import logging
+from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
-    QLabel, QPushButton, QStackedWidget, QPlainTextEdit, QSplitter,
+    QLabel, QPushButton, QStackedWidget, QPlainTextEdit,
     QFrame,
 )
-from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QTextCharFormat, QColor, QTextCursor
 
 from interfaces.gui.constants import (
     APP_NAME, APP_VERSION,
     WIN_WIDTH, WIN_HEIGHT, WIN_MIN_WIDTH, WIN_MIN_HEIGHT,
-    NAV_WORKFLOW, NAV_TRACE, NAV_OUTPUT, NAV_CONFIG, NAV_ITEMS,
+    NAV_WORKFLOW, NAV_TRACE, NAV_REVIEW, NAV_OUTPUT, NAV_CONFIG,
     ALL_NODE_IDS,
 )
 from interfaces.gui.styles import palette
 from interfaces.gui.step_indicator import StepIndicator, StepState
 from interfaces.gui.settings_manager import SettingsManager
 from interfaces.gui.settings_dialog import SettingsDialog
+from interfaces.gui.sidebar import Sidebar
 from interfaces.gui.panels.workflow_panel import WorkflowPanel, ReviewDialog
 from interfaces.gui.panels.trace_panel import TracePanel
+from interfaces.gui.panels.review_panel import ReviewPanel
 from interfaces.gui.panels.output_log import OutputLogPanel
 from interfaces.gui.panels.config_panel import ConfigPanel
+
+log = logging.getLogger(__name__)
+
+_DEFAULT_ARTIFACTS_DIR = Path("generated_artifacts")
 
 # ── Log color map — exact Int_Agent _LOG_COLORS dict ─────────────────────────
 _LOG_COLORS = {
@@ -71,6 +78,7 @@ class MainWindow(QMainWindow):
         self._workers: list = []          # keep references to prevent GC
         self._active_worker = None
         self._orchestrator  = None        # created lazily when first run starts
+        self._gca_invoker   = None        # shared across V-cycle and Review pipelines
 
         from PyQt6.QtGui import QIcon
         from interfaces.gui.icon import make_hex_pixmap
@@ -98,15 +106,29 @@ class MainWindow(QMainWindow):
         # Panel stack
         self._stack = QStackedWidget()
         self._workflow_panel = WorkflowPanel()
-        self._trace_panel    = TracePanel()
+        self._trace_panel    = TracePanel(
+            artifacts_dir=_DEFAULT_ARTIFACTS_DIR,
+            on_open_source=self._open_in_external_editor,
+        )
+        self._review_panel   = ReviewPanel()
         self._output_panel   = OutputLogPanel()
         self._config_panel   = ConfigPanel()
 
         self._stack.addWidget(self._workflow_panel)   # 0 → Workflow
         self._stack.addWidget(self._trace_panel)      # 1 → Trace
-        self._stack.addWidget(self._output_panel)     # 2 → Output
-        self._stack.addWidget(self._config_panel)     # 3 → Config
-        root.addWidget(self._stack, stretch=1)
+        self._stack.addWidget(self._review_panel)     # 2 → Review
+        self._stack.addWidget(self._output_panel)     # 3 → Output
+        self._stack.addWidget(self._config_panel)     # 4 → Config
+
+        # Sidebar + panel stack side-by-side
+        self._sidebar = Sidebar(on_nav=self._on_nav)
+        content = QWidget()
+        cl = QHBoxLayout(content)
+        cl.setContentsMargins(0, 0, 0, 0)
+        cl.setSpacing(0)
+        cl.addWidget(self._sidebar)
+        cl.addWidget(self._stack, stretch=1)
+        root.addWidget(content, stretch=1)
 
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
@@ -142,8 +164,6 @@ class MainWindow(QMainWindow):
         hl.setContentsMargins(16, 0, 12, 0)
         hl.setSpacing(8)
 
-        from PyQt6.QtGui import QIcon
-        from interfaces.gui.icon import make_hex_pixmap
         icon_lbl = QLabel("⬡")
         icon_lbl.setStyleSheet(f"color: {palette.ACCENT}; font-size: 20px;")
         hl.addWidget(icon_lbl)
@@ -176,7 +196,7 @@ class MainWindow(QMainWindow):
         hl.addWidget(self._status_badge)
         hl.addStretch()
 
-        settings_btn = QPushButton("⚙  Settings  /  Navigation")
+        settings_btn = QPushButton("⚙  Settings")
         settings_btn.setFixedHeight(28)
         settings_btn.setStyleSheet(
             f"QPushButton {{ background-color: {palette.BG_CARD}; color: {palette.TEXT2}; "
@@ -191,11 +211,26 @@ class MainWindow(QMainWindow):
     # ── Navigation ────────────────────────────────────────────────────────────
 
     def _on_nav(self, label: str) -> None:
-        idx_map = {NAV_WORKFLOW: 0, NAV_TRACE: 1, NAV_OUTPUT: 2, NAV_CONFIG: 3}
+        idx_map = {
+            NAV_WORKFLOW: 0,
+            NAV_TRACE:    1,
+            NAV_REVIEW:   2,
+            NAV_OUTPUT:   3,
+            NAV_CONFIG:   4,
+        }
         self._stack.setCurrentIndex(idx_map.get(label, 0))
         self._panel_lbl.setText(f"› {label}")
+        self._sidebar.set_active(label)
 
     # ── Worker / run logic ────────────────────────────────────────────────────
+
+    def _get_gca_invoker(self):
+        if self._gca_invoker is None:
+            from gca.vscode_invoker import DevNexGCAInvoker
+            config = self._config_panel.get_config()
+            repo_path = Path(config.get("workspace_path", "."))
+            self._gca_invoker = DevNexGCAInvoker(repo_path=repo_path)
+        return self._gca_invoker
 
     def _get_orchestrator(self):
         if self._orchestrator is None:
@@ -207,6 +242,8 @@ class MainWindow(QMainWindow):
                 workspace_path=config.get("workspace_path", "."),
             )
             self._orchestrator = DevNexOrchestrator(run_context=ctx)
+            # Inject shared GCA invoker so both pipelines reuse one VS Code connection
+            self._orchestrator._gca_invoker = self._get_gca_invoker()
         return self._orchestrator
 
     def _on_node_run_requested(self, node_id: str) -> None:
@@ -267,6 +304,9 @@ class MainWindow(QMainWindow):
 
         level = "SUCCESS" if status in ("complete", "done") else "ERROR"
         self.append_log(f"Node {node_id} → {status}.", step=node_id, level=level)
+
+        # Refresh trace graph after any stage completion
+        self._trace_panel.update_from_state({"node_id": node_id, "status": status})
 
     def _on_review_needed(self, node_id: str, message: str) -> None:
         dlg = ReviewDialog(node_id, message, parent=self)
@@ -343,8 +383,27 @@ class MainWindow(QMainWindow):
         )
 
     def _open_settings(self) -> None:
-        dlg = SettingsDialog(self._settings, on_nav=self._on_nav, parent=self)
+        dlg = SettingsDialog(self._settings, parent=self)
         dlg.exec()
+
+    def _open_in_external_editor(self, path: str, line_no: int) -> None:
+        """Open *path*:*line_no* in VS Code, falling back to the OS default."""
+        import os
+        import subprocess
+        import sys
+        try:
+            target = f"{path}:{line_no}" if line_no else path
+            subprocess.Popen(["code", "-g", target])
+            return
+        except Exception:
+            pass
+        try:
+            if sys.platform == "win32":
+                os.startfile(path)  # type: ignore[attr-defined]
+            else:
+                subprocess.Popen(["xdg-open", path])
+        except Exception as exc:
+            log.warning("Could not open %s: %s", path, exc)
 
     # ── Window lifecycle ──────────────────────────────────────────────────────
 
@@ -352,5 +411,9 @@ class MainWindow(QMainWindow):
         if self._active_worker is not None and self._active_worker.isRunning():
             self._active_worker.quit()
             self._active_worker.wait(2000)
+        if self._gca_invoker is not None:
+            self._gca_invoker.disconnect()
         self._settings.save()
+        from core.file_logger import close_file_logging
+        close_file_logging()
         super().closeEvent(event)
