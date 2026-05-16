@@ -49,6 +49,7 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 markers = [
     "nightly_e2e: marks tests that require real GCA/VS Code (deselect with '-m not nightly_e2e')",
+    "e2e: marks end-to-end POC spine tests (deselect with '-m not e2e')",
 ]
 
 [build-system]
