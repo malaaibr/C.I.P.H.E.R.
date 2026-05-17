@@ -1,0 +1,102 @@
+GNU ld 2.40 demo map - synthetic addresses, Full Demo (5 components)
+Generated for CIPHER ASDLC Full Demo trial (WBS-0003). NOT a real toolchain artifact.
+Supersedes the WBS-0002 Dio-only map; covers Port, Det, Dio, IoHwAb, LedActuator.
+Symbol attribution column (right-most) binds every entry to its <source>.c.obj.
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+FLASH            0x0000000008000000 0x0000000000200000 xr
+RAM              0x0000000024000000 0x0000000000080000 xrw
+*default*        0x0000000000000000 0xffffffffffffffff
+
+Linker script and memory map
+
+.isr_vector     0x0000000008000000      0x100
+                0x0000000008000000                . = ALIGN (0x4)
+ *(.isr_vector)
+ .isr_vector    0x0000000008000000      0x100 build/startup_stm32h7xx.o
+
+.text           0x0000000008000100     0x1654
+                0x0000000008000100                _stext = .
+ .text.Port_Init
+                0x0000000008000100       0xe0 build/Port.c.obj
+                0x0000000008000100                Port_Init
+ .text.Port_GetVersionInfo
+                0x00000000080001e0       0x48 build/Port.c.obj
+                0x00000000080001e0                Port_GetVersionInfo
+ .text.Det_Init
+                0x0000000008000228       0x60 build/Det.c.obj
+                0x0000000008000228                Det_Init
+ .text.Det_ReportError
+                0x0000000008000288       0xa0 build/Det.c.obj
+                0x0000000008000288                Det_ReportError
+ .text.Det_GetVersionInfo
+                0x0000000008000328       0x44 build/Det.c.obj
+                0x0000000008000328                Det_GetVersionInfo
+ .text.Dio_WriteChannel
+                0x000000000800036c       0xc4 build/Dio.c.obj
+                0x000000000800036c                Dio_WriteChannel
+ .text.Dio_ReadChannel
+                0x0000000008000430       0xa8 build/Dio.c.obj
+                0x0000000008000430                Dio_ReadChannel
+ .text.Dio_FlipChannel
+                0x00000000080004d8       0xb0 build/Dio.c.obj
+                0x00000000080004d8                Dio_FlipChannel
+ .text.Dio_GetVersionInfo
+                0x0000000008000588       0x60 build/Dio.c.obj
+                0x0000000008000588                Dio_GetVersionInfo
+ .text.IoHwAb_Init
+                0x00000000080005e8       0x78 build/IoHwAb.c.obj
+                0x00000000080005e8                IoHwAb_Init
+ .text.IoHwAb_GetSignal_LedOut
+                0x0000000008000660       0x88 build/IoHwAb.c.obj
+                0x0000000008000660                IoHwAb_GetSignal_LedOut
+ .text.IoHwAb_SetSignal_LedOut
+                0x00000000080006e8       0x90 build/IoHwAb.c.obj
+                0x00000000080006e8                IoHwAb_SetSignal_LedOut
+ .text.IoHwAb_GetSignal_Switch
+                0x0000000008000778       0x84 build/IoHwAb.c.obj
+                0x0000000008000778                IoHwAb_GetSignal_Switch
+ .text.LedActuator_Init
+                0x00000000080007fc       0x4c build/LedActuator.c.obj
+                0x00000000080007fc                LedActuator_Init
+ .text.LedActuator_MainFunction
+                0x0000000008000848      0x10c build/LedActuator.c.obj
+                0x0000000008000848                LedActuator_MainFunction
+                0x0000000008000954                _etext = .
+
+.rodata         0x0000000008001800       0xc0
+                0x0000000008001800                _srodata = .
+ .rodata.PortPinConfig_table
+                0x0000000008001800       0x60 build/Port.c.obj
+                0x0000000008001800                PortPinConfig_table
+ .rodata.DioConfig_table
+                0x0000000008001860       0x30 build/Dio.c.obj
+                0x0000000008001860                DioConfig_table
+ .rodata.IoHwAb_SignalMap_table
+                0x0000000008001890       0x30 build/IoHwAb.c.obj
+                0x0000000008001890                IoHwAb_SignalMap_table
+                0x00000000080018c0                _erodata = .
+
+.data           0x0000000024000000        0x4 load address 0x00000000080018c0
+                0x0000000024000000                _sdata = .
+ .data.LedActuator_LastSwitchState
+                0x0000000024000000        0x4 build/LedActuator.c.obj
+                0x0000000024000000                LedActuator_LastSwitchState
+                0x0000000024000004                _edata = .
+
+.bss            0x0000000024000004       0xfc
+                0x0000000024000004                _sbss = .
+ .bss.Port_PinShadow
+                0x0000000024000004       0x30 build/Port.c.obj
+                0x0000000024000004                Port_PinShadow
+ .bss.Dio_PortShadow
+                0x0000000024000034        0x6 build/Dio.c.obj
+                0x0000000024000034                Dio_PortShadow
+ .bss.Det_Buffer
+                0x000000002400003a       0xc0 build/Det.c.obj
+                0x000000002400003a                Det_Buffer
+                0x00000000240000fa                _ebss = .
+
+OUTPUT(firmware.elf elf32-littlearm)

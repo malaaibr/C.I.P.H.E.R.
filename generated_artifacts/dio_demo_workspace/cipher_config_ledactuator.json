@@ -1,0 +1,13 @@
+{
+  "SWC_name": "LedActuator",
+  "G_SWDD_TEMP": "G_SWDD_TEMP.md",
+  "SWC_name_C": "LedActuator.c",
+  "SWC_name_H": "LedActuator.h",
+  "SWC_name_TEMP_LLD": "LedActuator_TEMP_LLD.csv",
+  "SWC_name_FUNC_req": "",
+  "SWC_nameInspBaseLLD": "",
+  "SWC_name_HLD": "LedActuator_HLD.md",
+  "lds_file": "stm32h7xx_flash.ld",
+  "map_file": "firmware.map",
+  "workspace_path": "C:\\AI_Agents\\CIPHER_Local_repo\\CIPHER\\CIPHER_Repo\\generated_artifacts\\dio_demo_workspace"
+}

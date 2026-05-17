@@ -166,6 +166,9 @@ venv.bak/
 # Docker stack runtime data (langfuse/memgraph/minio/qdrant/redis volumes)
 deploy/local/data/
 
+# DevNex runtime config (auto-emitted when no config is imported)
+generated_artifacts/config.json
+
 # Spyder project settings
 .spyderproject
 .spyproject
