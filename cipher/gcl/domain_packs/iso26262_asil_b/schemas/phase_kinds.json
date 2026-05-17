@@ -1,0 +1,13 @@
+{
+  "SWE.1": ["state_set", "transition", "interface_field", "asil_declaration"],
+  "SWE.2": ["state_set", "transition", "interface_field", "asil_declaration", "timing_param"],
+  "SWE.3": [
+    "state_set", "transition", "timing_param", "interface_field",
+    "function_signature", "error_handler", "asil_declaration",
+    "resource_consumption", "critical_section", "macro_definition",
+    "type_definition", "misra_deviation", "review_needed"
+  ],
+  "SWE.4": ["function_signature", "error_handler", "critical_section", "macro_definition", "type_definition", "misra_deviation"],
+  "SWE.5": ["state_set", "transition", "timing_param", "interface_field", "function_signature"],
+  "SWE.6": ["state_set", "transition", "timing_param", "interface_field", "function_signature", "asil_declaration"]
+}

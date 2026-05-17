@@ -1,0 +1,13 @@
+name: iso26262-asil-b
+version: "1.0.0"
+description: >
+  ISO 26262 ASIL-B domain pack for automotive embedded SDLC.
+  Enforces ASIL coherence, ASPICE SWE.3 phase constraints,
+  and citation type compatibility rules.
+applicable_standards:
+  - ISO 26262-6:2018
+  - ASPICE v4.0
+  - MISRA C:2023
+asil_level: B
+max_revision_attempts: 3
+require_hitl_on_revision_exceeded: true

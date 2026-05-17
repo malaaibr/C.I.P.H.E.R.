@@ -1,0 +1,15 @@
+{
+  "state_set": ["REQUIREMENT", "ARCHITECTURE", "PRIOR_DESIGN"],
+  "transition": ["REQUIREMENT", "ARCHITECTURE", "PRIOR_DESIGN"],
+  "timing_param": ["REQUIREMENT", "PRIOR_DESIGN"],
+  "interface_field": ["REQUIREMENT", "ARCHITECTURE", "PRIOR_DESIGN"],
+  "function_signature": ["PRIOR_DESIGN", "ARCHITECTURE"],
+  "error_handler": ["REQUIREMENT", "STANDARD_RULE", "PRIOR_DESIGN"],
+  "asil_declaration": ["REQUIREMENT", "ARCHITECTURE"],
+  "resource_consumption": ["PRIOR_DESIGN"],
+  "critical_section": ["PRIOR_DESIGN", "ARCHITECTURE"],
+  "macro_definition": ["PRIOR_DESIGN", "STANDARD_RULE"],
+  "type_definition": ["PRIOR_DESIGN", "ARCHITECTURE"],
+  "misra_deviation": ["STANDARD_RULE", "PRIOR_DESIGN"],
+  "review_needed": ["REQUIREMENT", "ARCHITECTURE", "STANDARD_RULE", "PRIOR_DESIGN", "TEST_VECTOR"]
+}
