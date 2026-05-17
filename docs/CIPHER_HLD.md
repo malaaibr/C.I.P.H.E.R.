@@ -1470,3 +1470,52 @@ This summary table defines what each layer is allowed to depend on directly. It 
 ---
 
 *This document describes the static structural architecture of the CIPHER Local MVP. For dynamic interface specifications, see individual agent LLD documents. For deployment configuration, see `deploy/local/docker-compose.yml`. For the full architectural reference including cloud production deployment, see `CIPHER_Architecture_v3.md`.*
+
+---
+
+## Documentation Index
+
+> Added 2026-05-17. The CIPHER platform's design is now decomposed into per-layer HLDs and per-agent docs. This master document remains the canonical platform-level architecture; the linked files provide layer-by-layer and agent-by-agent depth.
+
+### Per-Layer HLDs
+
+| Layer | Doc | Coverage |
+|-------|-----|----------|
+| DRS | [DRS_HLD](layers/DRS_HLD.md) | Docker stack, infra ports, volume layout |
+| GCL | [GCL_HLD](layers/GCL_HLD.md) | OPA policy, audit journal, gate enforcement |
+| PKL | [PKL_HLD](layers/PKL_HLD.md) | NATS event bus, LangGraph workflow engine |
+| MKF | [MKF_HLD](layers/MKF_HLD.md) | Hybrid RAG (Qdrant + BM25), long-term memory |
+| TRF | [TRF_HLD](layers/TRF_HLD.md) | LLM Gateway, MCP servers, TaskClass routing |
+| ARE | [ARE_HLD](layers/ARE_HLD.md) | A2A server, SkillLoader, AgentCard registry |
+| AAL | [AAL_HLD](layers/AAL_HLD.md) | Agent application layer (hosts agent plugins) |
+| GUI | [GUI_HLD](layers/GUI_HLD.md) | PyQt6 desktop app, HUD + DevNex workspace |
+| Core | [Core_HLD](layers/Core_HLD.md) | Schemas, adapters, OTel, mother CipherOrchestrator |
+
+### Per-Agent Docs
+
+| Agent | Status | Doc |
+|-------|--------|-----|
+| devnex_assistant | Implemented | [devnex_assistant](agents/devnex_assistant.md) |
+| devnex (adapter) | Implemented | [devnex](agents/devnex.md) |
+| asil_reviewer | Stub | [asil_reviewer](agents/asil_reviewer.md) |
+| compliance | Stub | [compliance](agents/compliance.md) |
+| memory_agent | Stub | [memory_agent](agents/memory_agent.md) |
+| planner | Stub | [planner](agents/planner.md) |
+| research | Stub | [research](agents/research.md) |
+| test_agent | Stub | [test_agent](agents/test_agent.md) |
+| tool_agent | Stub | [tool_agent](agents/tool_agent.md) |
+| traceability | Stub | [traceability](agents/traceability.md) |
+
+### Demo Trial Artifacts
+
+| Artifact | Doc |
+|----------|-----|
+| AUTOSAR Dio SWS extract | [CAR-004](car/CAR-004-autosar-dio-sws.md) |
+| AUTOSAR Port SWS extract | [CAR-005](car/CAR-005-autosar-port-sws.md) |
+| AUTOSAR DET SWS extract | [CAR-006](car/CAR-006-autosar-det-sws.md) |
+| IoHwAb references (no SWS) | [CAR-007](car/CAR-007-autosar-iohwab-reference.md) |
+| SWC Template references (no SWS) | [CAR-008](car/CAR-008-autosar-swc-template-reference.md) |
+| Dio-only demo plan | [WBS-0002](wbs/WBS-0002-dio-demo-trial.md) |
+| Full Demo (5-component) plan | [WBS-0003](wbs/WBS-0003-full-demo-trial.md) |
+| Presenter runbook | [DEMO_RUNBOOK_DIO](DEMO_RUNBOOK_DIO.md) |
+
