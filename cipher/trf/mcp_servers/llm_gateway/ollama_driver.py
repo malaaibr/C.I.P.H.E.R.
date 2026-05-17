@@ -16,7 +16,7 @@ class OllamaDriver:
 
     def __init__(self) -> None:
         self._base_url = os.environ.get("OLLAMA_BASE_URL", "http://localhost:11434")
-        self._model = os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:7b")
+        self._model = os.environ.get("OLLAMA_MODEL", "qwen2.5-coder:1.5b")
 
     @property
     def backend_id(self) -> str:

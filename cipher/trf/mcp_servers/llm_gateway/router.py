@@ -38,6 +38,9 @@ class TaskClassRouter:
     ) -> LLMResponse:
         driver = self._get_driver(task_class)
         if not await driver.is_available():
+            fallback = OllamaDriver()
+            if await fallback.is_available():
+                return await fallback.complete(prompt, context)
             raise LLMUnavailableError(
                 driver.backend_id, f"Backend not available for {task_class}"
             )

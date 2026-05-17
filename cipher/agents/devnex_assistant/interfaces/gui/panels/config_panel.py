@@ -54,6 +54,15 @@ class ConfigPanel(QWidget):
         sub.setStyleSheet(f"color: {palette.TEXT3}; font-size: 11px;")
         hl.addWidget(sub)
         hl.addStretch()
+        load_btn = QPushButton("Import Config")
+        load_btn.setFixedSize(120, 30)
+        load_btn.setStyleSheet(
+            f"background-color: {palette.BG_CARD}; color: {palette.ACCENT}; "
+            f"border: 1px solid {palette.ACCENT}; "
+            f"border-radius: 5px; font-weight: bold; font-size: 11px;"
+        )
+        load_btn.clicked.connect(self._import_config)
+        hl.addWidget(load_btn)
         save_btn = QPushButton("Save Config")
         save_btn.setFixedSize(110, 30)
         save_btn.setStyleSheet(
@@ -132,6 +141,25 @@ class ConfigPanel(QWidget):
         import json
         self._preview.setText(json.dumps(config, indent=2))
         self.config_saved.emit(config)
+
+    def _import_config(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import config.json", "", "JSON Files (*.json);;All Files (*)"
+        )
+        if not path:
+            return
+        import json
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            return
+        if not isinstance(data, dict):
+            return
+        for key, inp in self._inputs.items():
+            if key in data:
+                inp.setText(str(data[key]))
+        self._preview.setText(json.dumps(self.get_config(), indent=2))
 
     def _browse(self, key: str) -> None:
         path, _ = QFileDialog.getOpenFileName(self, f"Select {key}")
