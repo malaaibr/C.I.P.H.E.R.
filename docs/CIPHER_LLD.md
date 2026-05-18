@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER — Low-Level Design Document
 
 **Version**: 1.0.0-MVP
@@ -1560,3 +1567,8 @@ Worker Thread N: NodeWorker / FullRunWorker (spawned on demand)
 | Full Demo (5-component) plan | [WBS-0003](wbs/WBS-0003-full-demo-trial.md) |
 | Presenter runbook | [DEMO_RUNBOOK_DIO](DEMO_RUNBOOK_DIO.md) |
 
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added; body unchanged. |

@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # WBS-0003: Full Demo Trial — 5-Component Vertical-Stack ASDLC Walkthrough
 
 | Field | Value |

@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER
 
 **Cognitive Intelligent Platform for Holistic Embedded R&D Automation**
@@ -439,3 +446,9 @@ This project does not currently specify a license.
 ## Disclaimer
 
 CIPHER is intended to support engineering automation, traceability, and review workflows. Safety-critical artifacts must still be reviewed and approved by qualified engineers according to the organization's safety, quality, and compliance processes.
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

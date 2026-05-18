@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # Expert Prompt: CIPHER Platform Training Course Generator
 
 > **Instructions**: Copy the entire prompt below (everything between the `---` markers) and paste it into a new Claude conversation. Claude will generate the full course curriculum with lessons, video scripts, hands-on labs, and environment setup guides.
@@ -278,3 +285,9 @@ Generate the complete course now, starting with Module 0. Be exhaustive — this
 ---
 
 *End of prompt. Copy everything between the `---` markers above into Claude.*
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

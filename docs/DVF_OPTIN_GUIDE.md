@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # DVF Opt-In Guide (S2N1 … S9N1 and beyond)
 
 After Sprint 8, every LLM-touching orchestrator node can opt into the
@@ -101,3 +108,9 @@ output shape (CSV, annotated C, trace matrix, test specs, …) and different
 ASPICE-phase claim-kind constraints. Shipping mediocre v2 prompts would
 trigger needless HITL escalations and harm trust in DVF. Keep the legacy
 path until each prompt is ready.
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

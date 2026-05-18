@@ -127,3 +127,9 @@ relevant when a UC needs memory access independent of DevNex.
   path (matrix rows → MKF collection name → retrieval filter).
 - Conversation memory (ADR-0004 §6) deferred to MVP; reflect in roadmap once
   POC closes.
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

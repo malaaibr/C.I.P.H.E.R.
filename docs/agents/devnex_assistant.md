@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # DevNex Assistant — Agent Specification
 
 ## §0 Frontmatter
@@ -261,3 +268,9 @@ Gaps surfaced from `docs/SESSION_HANDOFF.md` §4 and direct code reading:
 ---
 
 *End of AGENT-DEVNEX-001.*
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

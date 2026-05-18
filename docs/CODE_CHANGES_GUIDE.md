@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER GUI Integration — Code Changes Guide
 
 **Audience**: Junior AI Engineers joining the CIPHER project
@@ -381,3 +388,9 @@ python run_poc.py
 ```
 
 The splash screen plays for ~7 seconds, then the CIPHER HUD appears. Click "OPEN DevNex WORKSPACE" to switch to the DevNex panels. Configure your SWC project in the Config panel, then click nodes in the Workflow panel to execute them.
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

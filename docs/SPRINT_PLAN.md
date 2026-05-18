@@ -1,3 +1,10 @@
+---
+doc_version: 1.2.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER — Unified Sprint Plan (Backlog + VSIX Extension)
 
 **Date**: 2026-05-18
@@ -143,3 +150,9 @@ Audit (2026-05-18) showed the platform is ~80% MVP-ready. All 13 V-cycle nodes h
 5. `.vsix` signing for distribution.
 
 See `docs/VSIX_DESIGN.md` §7 for mitigations.
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.2.0 | 2026-05-18 | CIPHER team | Tracks Sprints 1–8 (VSIX + MVP wiring). Supersedes SESSION_HANDOFF §14. |

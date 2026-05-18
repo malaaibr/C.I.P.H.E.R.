@@ -125,3 +125,9 @@ the code is not yet written:
     path for ASIL-D.
   - Adding the pytest class `test_asil_reviewer.py` per `ASDLC.md` §2.3
     ("no module is done until its test class passes 100%").
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

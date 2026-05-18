@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER Package Scaffold
 
 This package contains the local MVP scaffold for the CIPHER platform described in [`docs/CIPHER_archi.md`](../docs/CIPHER_archi.md).

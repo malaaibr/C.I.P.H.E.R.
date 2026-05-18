@@ -1,3 +1,13 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: superseded
+superseded_by: docs/SPRINT_PLAN.md
+---
+
+> **Superseded by [docs/SPRINT_PLAN.md](SPRINT_PLAN.md) as of 2026-05-18.** Kept for archeology.
+
 # CIPHER Project — Session Handoff Document
 
 **Date**: 2026-05-17
@@ -421,3 +431,9 @@ cipher/core/schemas/__init__.py            ← Exports all new types
 10. **Add more domain packs**: ISO 26262 ASIL-C/D, ASPICE Level 3, MISRA-C:2012
 11. **Wire DVF loop into DevNex orchestrator**: Replace direct LLM calls with DVF loop for citation-aware generation
 12. **Integrate CAP metrics into CI**: Run `compute_metrics()` on generated CRC chains as part of test pipeline
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Marked superseded — see SPRINT_PLAN.md for current backlog. |

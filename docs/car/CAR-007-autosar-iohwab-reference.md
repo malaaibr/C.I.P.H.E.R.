@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CAR-007: AUTOSAR Classic Platform — I/O Hardware Abstraction (IoHwAb) Reference
 
 - **Status:** Accepted (synthesized reference — see warning below)

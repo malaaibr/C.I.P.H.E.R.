@@ -1,3 +1,10 @@
+---
+doc_version: 3.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER — Cognitive Intelligent Platform for Holistic Embedded R&D Automation
 ## High-Level Design: Layered Software Architecture
 ### Local MVP Edition · Document ID: CIPHER-HLD-001 · Release R1.1 · 10 May 2026
@@ -1519,3 +1526,8 @@ This summary table defines what each layer is allowed to depend on directly. It 
 | Full Demo (5-component) plan | [WBS-0003](wbs/WBS-0003-full-demo-trial.md) |
 | Presenter runbook | [DEMO_RUNBOOK_DIO](DEMO_RUNBOOK_DIO.md) |
 
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 3.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added; body unchanged. |

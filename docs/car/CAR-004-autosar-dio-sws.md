@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CAR-004: AUTOSAR Classic Platform — DIO Driver SWS (Demo Source Spec)
 
 - **Status:** Accepted

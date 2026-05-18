@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER DevNex — Sprint 0 Detailed Changelog
 
 **Sprint dates:** 2026-05-14 → 2026-05-16

@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER Project — Claude Context
 
 ## Project Overview
@@ -62,3 +69,9 @@ See `docs/SESSION_HANDOFF.md` for complete status, issues fixed, known issues, a
 - `docs/CODE_CHANGES_GUIDE.md` — Code changes guide for junior engineers (16 KB)
 - `docs/COURSE_PROMPT.md` — Training course prompt template (13 KB)
 - `docs/SESSION_HANDOFF.md` — Session handoff with issues/fixes/next steps
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Synced with Sprint 8 state. |

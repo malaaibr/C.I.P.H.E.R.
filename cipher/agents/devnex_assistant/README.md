@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # devnex-assistant
 
 AI-assisted V-cycle automation for embedded SWC workflows. The current implementation provides a local Click CLI and PyQt6 GUI that orchestrate LLD generation, requirement categorization, LLD-to-code linking, traceability report generation, test artifact generation, UTD generation, and final HLD/LLD/code/test traceability through GCA.

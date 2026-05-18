@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER Platform — High-Level Design
 
 > **Document revision:** Sprint 0 complete (2026-05-16)

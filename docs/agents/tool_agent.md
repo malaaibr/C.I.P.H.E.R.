@@ -113,3 +113,9 @@ consumers:
   enforcement up into AAL. `CIPHER_archi.md` §7.1 currently keeps the
   enforcement inside the TRF gateway.
 - No tests, no agent card, no `__init__.py` exports yet.
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

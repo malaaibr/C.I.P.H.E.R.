@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER VSCode Extension — Design
 
 **Date**: 2026-05-18
@@ -162,3 +169,9 @@ extension/
 | 3 | Webview CSP | Nonce-based script tags; `connect-src` only allows `127.0.0.1:8100` and `127.0.0.1:8200`. |
 | 4 | Python env discovery | `cipher.pythonPath` setting + autodetect `.venv` next to `pyproject.toml`; walkthrough shown if not found. |
 | 5 | Distribution | Build with `vsce package` (unsigned) for sideload; later add Marketplace publisher + CI publish. |
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

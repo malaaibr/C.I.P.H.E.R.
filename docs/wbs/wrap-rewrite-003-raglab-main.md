@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # Wrap/Rewrite Decision Matrix — CAR-003: RagLab-Main
 
 - **Reference:** CAR-003 (RagLab-Main — Memory Agent Core)

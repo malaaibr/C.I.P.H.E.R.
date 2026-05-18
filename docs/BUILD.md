@@ -1,3 +1,10 @@
+---
+doc_version: 1.1.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER — Build Guide
 
 How to build, package, and install the **CIPHER VSCode extension (`.vsix`)** and the **Python host** it drives.
@@ -40,8 +47,8 @@ pip install pytest pydantic fastapi uvicorn httpx pyyaml PyQt6
 Smoke check:
 
 ```powershell
-python -m pytest tests/unit -q
-# expected: 154 passed
+python -m pytest tests/unit tests/integration -q
+# expected: 162 passed (as of Sprint 8 close, 2026-05-18)
 ```
 
 Headless run (this is what the extension spawns):
@@ -148,3 +155,9 @@ distributing a `.vsix`.
 | Port 8100/8200 already in use | Stop other CIPHER instances, or change `cipher.ports.*` and pass matching env to `run_poc.py`. |
 
 See `docs/USER_MANUAL.md` for runtime troubleshooting.
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.1.0 | 2026-05-18 | CIPHER team | GitHub Actions section removed — CI out of scope for this phase. |

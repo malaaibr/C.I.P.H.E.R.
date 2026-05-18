@@ -122,3 +122,9 @@ The Planner does **not** implement UCs; it allocates them.
   check in the GCL policy bundle.
 - Decision pending: should the Planner reuse the DevNex LangGraph runtime or
   run as a lighter advisory-only A2A service?
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

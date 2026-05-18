@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CAR-002: DevNex Assistant — Agent-001 Codebase Analysis Report
 
 - **Status:** Accepted

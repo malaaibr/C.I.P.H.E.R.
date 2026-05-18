@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # Trace Graph Panel — DevNex Assistant
 
 Visualises the full ISO 26262 / ASPICE traceability chain across five columns:

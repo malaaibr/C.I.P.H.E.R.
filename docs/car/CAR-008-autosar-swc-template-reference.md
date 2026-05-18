@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CAR-008: AUTOSAR Software Component Template (Demo Reference for LedActuator SWC)
 
 - **Status:** Accepted

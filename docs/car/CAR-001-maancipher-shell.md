@@ -1,3 +1,12 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: deprecated
+---
+
+> **Deprecated as of 2026-05-18 — historical reference only.**
+
 # CAR-001: MainCipher Shell — Platform GUI Codebase Analysis Report
 
 - **Status:** Accepted
@@ -246,3 +255,9 @@ The primary integration costs are: (a) upgrading PyQt5→PyQt6 (mechanical, ~2 d
 The shell is purely a presentation layer with zero internal state — this makes the A2A rewiring safe and testable in isolation.
 
 **Recommended action:** REFACTOR the shell to accept an A2A client instead of a direct Orchestrator; WRAP all visual widgets and the boot panel unchanged; add the A2A/SSE client package as NEW code.
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Marked deprecated — predates CIPHER; kept for archeology. |

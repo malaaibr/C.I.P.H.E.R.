@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER AI Software Development Lifecycle (ASDLC)
 
 | Field | Value |
@@ -179,3 +186,9 @@ CIPHER enforces the following rules in all ASIL >= B components:
 ---
 
 *CIPHER QA-PROC — ASDLC v1.0 — 2026-05-16*
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

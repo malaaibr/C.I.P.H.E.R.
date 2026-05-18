@@ -147,3 +147,9 @@ orchestrator is tracked in **Open Items** below.
    `TaskStatus` without using it (lint signal).
 5. **MinIO failure visibility** — skill silently swallows MinIO upload
    failures (skill.py:44-45); consider logging at WARNING level.
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Marked superseded — merged into devnex_assistant agent. |

@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CAR-006: AUTOSAR Classic Platform — Default/Development Error Tracer (DET) SWS (Demo Source Spec)
 
 - **Status:** Accepted

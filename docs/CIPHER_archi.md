@@ -1,3 +1,10 @@
+---
+doc_version: 3.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER — Cognitive Intelligent Platform for Holistic Embedded R&D Automation
 ## Architectural Reference Document · v2.0 · 09 May 2026
 
@@ -1371,3 +1378,9 @@ Long-term vision includes CIPHER acting as the ASPICE process execution engine i
 ---
 
 *This document is the implementation contract for CIPHER v3.0. Engineers can begin with Phase 1 today: stand up the Docker Compose stack from `deploy/local/`, wrap DevNex with the A2A server stub from Section 4, load the `iso26262-asil-b` domain pack, and the rest of the platform grows around the contract — exactly as designed.*
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 3.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added; body unchanged. |

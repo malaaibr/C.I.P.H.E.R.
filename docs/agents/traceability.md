@@ -113,3 +113,9 @@ This stub maps to two ASDLC anchors:
   exist conceptually in `CIPHER_archi.md` but have no skill implementation here.
 - Decision pending: keep trace assembly inside `devnex_assistant` (status quo)
   or split into this dedicated agent (current planned direction).
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

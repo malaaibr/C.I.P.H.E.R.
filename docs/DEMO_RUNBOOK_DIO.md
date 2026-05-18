@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # DEMO RUNBOOK - AUTOSAR Dio Driver (ASIL-B)
 
 | Field | Value |
@@ -425,3 +432,9 @@ Extends §6 of this runbook and [WBS-0003](wbs/WBS-0003-full-demo-trial.md) §5.
 ---
 
 *CIPHER Tech Lead - DEMO-DIO-001 v1.0 §9 (Full Demo extension) - 2026-05-17*
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

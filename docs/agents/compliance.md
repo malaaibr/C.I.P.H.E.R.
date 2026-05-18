@@ -142,3 +142,9 @@ specs) required by the relevant SWE.x or ASIL checklist.
 
 *Doc AGENT-COMPL-001 — Compliance Agent (STUB) — generated for CIPHER agent
 catalog, 2026-05-17.*
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER — User Manual
 
 Operating reference for the **CIPHER VSCode extension** and its Python host. For step-by-step first-time use, see `docs/USER_GUIDE.md`. For build/install, see `docs/BUILD.md`.
@@ -165,3 +172,9 @@ To author a new pack: copy `cipher/gcl/domain_packs/iso26262_asil_b/` and edit `
 - `docs/CIPHER_archi.md` — full platform architecture
 - `docs/CIPHER_HLD.md` / `docs/CIPHER_LLD.md` — high/low-level design
 - `docs/SESSION_HANDOFF.md` — historical session notes (superseded by SPRINT_PLAN.md)
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

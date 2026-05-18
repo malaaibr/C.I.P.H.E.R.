@@ -1,3 +1,10 @@
+---
+doc_version: 1.1.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER — User Guide (First Run)
 
 Step-by-step walkthrough from a clean machine to running your first V-cycle node through the VSCode extension. For deeper reference, see `docs/USER_MANUAL.md`.
@@ -41,8 +48,8 @@ pip install pytest pydantic fastapi uvicorn httpx pyyaml PyQt6
 Verify:
 
 ```powershell
-python -m pytest tests/unit -q
-# expected: 154 passed
+python -m pytest tests/unit tests/integration -q
+# expected: 162 passed (as of Sprint 8 close, 2026-05-18)
 ```
 
 ---
@@ -199,3 +206,9 @@ docs/
 2. Check **VSCode → Output → CIPHER Host** — that's where Python stderr surfaces.
 3. Run `pytest tests/unit -q` — if tests fail, the build is broken; don't expect the UI to work.
 4. File an issue with: OS version, Python version, Node version, the contents of the **CIPHER Host** output channel, and the last 50 log lines from the Output Log view.
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.1.0 | 2026-05-18 | CIPHER team | Added DVF opt-in + voice install notes under 'What to try next'. |

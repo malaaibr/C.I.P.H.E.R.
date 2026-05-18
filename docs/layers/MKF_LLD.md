@@ -1,13 +1,15 @@
 ---
 doc_id: LLD-MKF-001
+doc_version: 1.0.0
+last_updated: 2026-05-18
 layer: MKF
 title: Memory & Knowledge Fabric — Low-Level Design
-status: Draft
-owner: Layer-Doc Author
+status: current
+owner: CIPHER team
 related:
   - docs/layers/MKF_HLD.md (HLD-MKF-001)
   - docs/CIPHER_LLD.md §6 (Layer 4 — MKF)
-  - cipher/mkf/memory_agent/
+  - cipher/agents/memory_agent/
 ---
 
 # §0 Frontmatter

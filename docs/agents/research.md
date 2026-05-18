@@ -71,3 +71,9 @@ The Research Agent supports use cases that need evidence-gathering before genera
 - **Scout-pattern automation gap.** The Dio demo trial showed the value of the Scout role (CAR-004..008) end-to-end, but those CARs were assembled by a human operator; this agent is the planned automation target. Until it lands, CAR generation remains a manual evidence-gathering step.
 - **Internet policy.** OPA bundles for `research.internet.allow` are not yet authored.
 - **Reranker hosting.** `bge-reranker-large` is referenced in HLD but not present in the local `ollama pull` bootstrap; deployment story TBD.
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

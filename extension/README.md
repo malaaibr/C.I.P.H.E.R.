@@ -1,3 +1,10 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: current
+---
+
 # CIPHER — VSCode Extension
 
 In-editor surface for the **CIPHER** multi-agent platform (Cognitive Intelligent Platform for Holistic Embedded R&D Automation). Opens a sub-panel inside VSCode that mirrors the CIPHER HUD and DevNex workspace, and drives the Python host over loopback HTTP/SSE.
@@ -52,3 +59,9 @@ code --install-extension cipher-vscode-0.1.0.vsix
 - `cipher.repoPath`   — absolute path to CIPHER repo (defaults to workspace)
 - `cipher.ports.a2a` / `cipher.ports.gateway`
 - `cipher.showEditorButton`
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

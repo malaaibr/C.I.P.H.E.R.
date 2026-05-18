@@ -84,3 +84,9 @@ The agent supports the cross-cutting "tests written alongside" pattern that ever
 - No tests-for-the-tester strategy decided (meta-testing of generated suites).
 
 Tracking: scheduled for **Phase 2 (post-MVP)** per the stub README. No owner assigned in the AAL roll-up.
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Versioning frontmatter added (see docs/DOC_VERSIONING.md). |

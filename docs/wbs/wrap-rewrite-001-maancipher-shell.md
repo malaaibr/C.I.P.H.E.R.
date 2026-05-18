@@ -1,3 +1,12 @@
+---
+doc_version: 1.0.0
+last_updated: 2026-05-18
+owner: CIPHER team
+status: deprecated
+---
+
+> **Deprecated as of 2026-05-18 — historical reference only.**
+
 # Wrap/Rewrite Decision Matrix — CAR-001: MainCipher Shell
 
 - **Reference:** CAR-001 (MainCipher Shell — Platform GUI)
@@ -42,3 +51,9 @@
 **Primary risk:** The PyQt5→PyQt6 migration touches every module. Recommend doing it as a single batch task (T-GUI-001) before any other shell work.
 
 **Decision: PyQt version unification.** The DevNex agent GUI (CAR-002) already uses PyQt6. The shell must upgrade to PyQt6. This is a mechanical change (import paths, `exec_()` → `exec()`, enum namespacing). Estimated: 4 hours.
+
+## Revision History
+
+| Version | Date | Author | Change |
+|---------|------|--------|--------|
+| 1.0.0 | 2026-05-18 | CIPHER team | Marked deprecated — predates CIPHER; kept for archeology. |
