@@ -1,0 +1,12 @@
+name: misra-c-2012
+version: "1.0.0"
+description: >
+  MISRA C:2012 coding-rule pack. Scope is C-language claims only
+  (macro_definition, type_definition, misra_deviation). All such claims must
+  cite a STANDARD_RULE; deviations additionally require TEST_VECTOR.
+applicable_standards:
+  - MISRA C:2012
+  - MISRA C:2023 (compatible subset)
+asil_level: QM
+max_revision_attempts: 3
+require_hitl_on_revision_exceeded: false

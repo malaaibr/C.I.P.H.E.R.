@@ -1,0 +1,13 @@
+name: iso26262-asil-c
+version: "1.0.0"
+description: >
+  ISO 26262 ASIL-C domain pack — tightened citation requirements vs. ASIL-B.
+  Requires diagnostic coverage evidence on every error_handler claim and
+  forbids macro_definition claims without a STANDARD_RULE citation.
+applicable_standards:
+  - ISO 26262-6:2018
+  - ASPICE v4.0
+  - MISRA C:2023
+asil_level: C
+max_revision_attempts: 2
+require_hitl_on_revision_exceeded: true

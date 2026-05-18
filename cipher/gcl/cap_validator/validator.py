@@ -188,9 +188,32 @@ class CAPValidator:
     def _check_wf6(self, step: CRCStep) -> list[WellFormednessViolation]:
         """WF₆: Shared structured fields between claim and cited artifact must agree.
 
-        This is the most impactful check but requires runtime access to artifact
-        content. In this implementation we validate claim-internal consistency:
-        fields that appear in both the claim and the citation span metadata.
-        Full MKF-backed field comparison requires the Knowledge Graph runtime.
+        Full implementation requires the MKF Knowledge Graph runtime to resolve
+        each citation's artifact_uri to its structured fields. Until MKF is
+        reachable from the validator we perform a claim-internal consistency
+        check: when the same key appears in `claim.fields` and in a citation's
+        `span` metadata, the values must match.
         """
-        return []
+        violations: list[WellFormednessViolation] = []
+        claim_fields = step.claim.fields or {}
+        for c in step.citations:
+            span = getattr(c, "span", None)
+            span_meta = getattr(span, "metadata", None) if span else None
+            if not isinstance(span_meta, dict):
+                continue
+            for k, v in span_meta.items():
+                if k in claim_fields and claim_fields[k] != v:
+                    violations.append(
+                        WellFormednessViolation(
+                            step_index=step.i,
+                            violation_type=ViolationType.FIELD_MISMATCH,
+                            message=(
+                                f"Claim field '{k}' = {claim_fields[k]!r} "
+                                f"contradicts citation span metadata = {v!r}"
+                            ),
+                            expected=str(v),
+                            actual=str(claim_fields[k]),
+                            citation_uri=c.artifact_uri,
+                        )
+                    )
+        return violations

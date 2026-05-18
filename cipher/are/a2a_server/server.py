@@ -13,6 +13,11 @@ from cipher.core.schemas.task_contract import TaskContract, TaskResult, TaskStat
 
 app = FastAPI(title="CIPHER A2A Server", version="0.1.0")
 
+# Mount CIPHER VSIX bridge (REST + SSE for the VSCode webview).
+from cipher.are.a2a_server.cipher_routes import router as _cipher_router  # noqa: E402
+
+app.include_router(_cipher_router)
+
 _tasks: dict[UUID, TaskContract] = {}
 _results: dict[UUID, TaskResult] = {}
 _events: dict[UUID, asyncio.Queue[str]] = {}

@@ -65,6 +65,32 @@ class NodeResult:
     errors:    list[str] = field(default_factory=list)
 
 
+# ── Sprint 8: DVF helper module-level utilities ─────────────────────────────
+
+def path_context_with_content(path_config: dict, content_sections: list[str]) -> dict:
+    """
+    Build a template render context that includes the file-content tail used
+    by v2 (citation-aware) prompts. Keeps `_render_prompt` calls uniform across
+    nodes that want to opt into DVF.
+    """
+    ctx = dict(path_config)
+    ctx["__attached_content__"] = "\n\n## Attached Input Files\n" + "".join(content_sections)
+    return ctx
+
+
+def _render_crc_as_json(crc, swc: str) -> str:  # noqa: ARG001 — swc may be used by custom renderers
+    """
+    Default DVF artifact renderer — dumps the validated CRC as pretty JSON.
+    Nodes whose artifact is structured (CSV, annotated source, etc.) should
+    pass a tailored `render_artifact` callable into `_maybe_invoke_via_dvf`.
+    """
+    import json as _json
+    try:
+        return _json.dumps(crc.model_dump(mode="json"), indent=2)
+    except Exception:
+        return repr(crc)
+
+
 class DevNexOrchestrator:
     """
     @brief Coordinates V-cycle node execution for DevNex Assistant.
@@ -164,6 +190,98 @@ class DevNexOrchestrator:
         if last_exc:
             err += f" Last error: {last_exc}"
         raise NodeExecutionError(err)
+
+    # ── Sprint 8: Generic DVF opt-in helper ───────────────────────────────
+
+    def _maybe_invoke_via_dvf(
+        self,
+        *,
+        node_id: str,
+        base_prompt: str,
+        attached_files: list,
+        swc: str,
+        out_path: "Path",
+        resolved_paths: dict | None = None,
+        v2_prompt_basename: str | None = None,
+        v2_template_context: dict | None = None,
+        render_artifact: Callable | None = None,
+    ) -> "NodeResult | None":
+        """
+        @brief Generic DVF opt-in for any LLM-touching node.
+
+        Returns a NodeResult when DVF handled the work; returns None so the
+        caller can fall through to its legacy direct-LLM path.
+
+        Opt-in rules (all must hold):
+          - config["enable_dvf"] is truthy
+          - v2_prompt_basename is provided AND the prompt file exists
+          - config["dvf_nodes"] is unset, OR node_id is in that list
+          - DVF import + run succeeds without exception
+
+        On any failure during the DVF path the helper logs WARN and returns
+        None so the node falls back to its legacy path — opt-in must never
+        regress the legacy behaviour.
+        """
+        if not self.config.get("enable_dvf"):
+            return None
+        if v2_prompt_basename is None:
+            return None
+        enabled_nodes = self.config.get("dvf_nodes")
+        if enabled_nodes is not None and node_id not in enabled_nodes:
+            return None
+
+        try:
+            from cipher.agents.devnex_assistant.core.dvf_integration import run_with_dvf
+        except Exception as imp_err:
+            self._trace(f"{node_id}: DVF import failed ({imp_err}); using legacy path.",
+                        level="WARN")
+            return None
+
+        try:
+            v2_template = self._load_prompt(v2_prompt_basename)
+        except Exception as e:
+            self._trace(f"{node_id}: v2 prompt '{v2_prompt_basename}' not loadable ({e}); legacy path.",
+                        level="WARN")
+            return None
+
+        ctx = v2_template_context if v2_template_context is not None else dict(self.config)
+        attached_tail = ctx.pop("__attached_content__", "")
+        dvf_prompt = self._render_prompt(v2_template, ctx) + attached_tail
+
+        try:
+            self._trace(f"{node_id}: DVF enabled — running Draft-Verify-Finalize loop.")
+            crc, reports = run_with_dvf(
+                invoke_fn=self._invoke_with_retry,
+                prompt=dvf_prompt,
+                attached_files=attached_files,
+                config=self.config,
+                resolved_paths=resolved_paths or {},
+                node_id=node_id,
+                max_revisions=int(self.config.get("max_revisions", 3)),
+                domain_pack=self.config.get("domain_pack", "iso26262_asil_b"),
+            )
+        except Exception as dvf_err:
+            self._trace(f"{node_id}: DVF run failed ({dvf_err}); falling back to legacy path.",
+                        level="WARN")
+            return None
+
+        renderer = render_artifact or _render_crc_as_json
+        artifact_text = renderer(crc, swc)
+        out_path.write_text(artifact_text, encoding="utf-8")
+
+        last_pass = reports[-1].is_pass if reports else False
+        self._trace(
+            f"{node_id}: DVF complete — pass={last_pass} revisions={len(reports) - 1}",
+            level="SUCCESS" if last_pass else "WARN",
+        )
+        return NodeResult(
+            node_id=node_id,
+            status="complete" if last_pass else "complete_with_warnings",
+            output=artifact_text,
+            artifacts=[str(out_path)],
+            errors=[] if last_pass else
+                [f"{v.violation_type}: {v.message}" for v in reports[-1].violations],
+        )
 
     # ── F-009: critical_globs enforcement ────────────────────────────────
 
@@ -336,10 +454,27 @@ class DevNexOrchestrator:
         attached_files = [str(resolved[k]) for k in LLD_EMBEDDED_CONTEXT_KEYS]
         self._trace(f"S1N1: Invoking GCA (prompt={len(prompt)} chars).")
 
-        # F-002: retry wrapper
-        result = self._invoke_with_retry(prompt, attached_files, "S1N1")
-
         out_path = self._artifacts_dir / f"{swc}_TEMP_LLD_updated.csv"
+
+        # Sprint 8 — Opt-in DVF via generic helper. Returns a NodeResult when
+        # DVF handled the work, None to fall through to the legacy path.
+        from cipher.agents.devnex_assistant.core.dvf_loop import render_csv_from_crc
+        dvf_result = self._maybe_invoke_via_dvf(
+            node_id="S1N1",
+            base_prompt=prompt,
+            attached_files=attached_files,
+            swc=swc,
+            out_path=out_path,
+            resolved_paths=resolved,
+            v2_prompt_basename="lld_gen_v2.md",
+            v2_template_context=path_context_with_content(path_config, content_sections),
+            render_artifact=render_csv_from_crc,
+        )
+        if dvf_result is not None:
+            return dvf_result
+
+        # F-002: retry wrapper (legacy direct path)
+        result = self._invoke_with_retry(prompt, attached_files, "S1N1")
         out_path.write_text(result.raw_response, encoding="utf-8")
         self._trace(f"S1N1: Artifact written -> '{out_path}'.", level="SUCCESS")
 

@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="{{CSP}}" />
+    <title>CIPHER</title>
+    <style>
+      :root {
+        --bg: #010816;
+        --bg2: rgba(0, 200, 255, 0.04);
+        --line: rgba(0, 200, 255, 0.18);
+        --line-strong: rgba(0, 200, 255, 0.45);
+        --accent: #00c8ff;
+        --accent-2: #00ff9d;
+        --muted: #6b8aa3;
+        --warn: #e3b341;
+        --err: #ff7b72;
+        --ok: #3fb950;
+      }
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body { margin: 0; padding: 0; height: 100%; background: var(--bg); color: #cfe3ff;
+        font-family: ui-monospace, "JetBrains Mono", Consolas, monospace; font-size: 12px; }
+      header {
+        display: flex; align-items: center; gap: 10px;
+        padding: 8px 12px; border-bottom: 1px solid var(--line);
+        background: rgba(1,8,22,0.97); letter-spacing: 3px;
+      }
+      header .brand { color: var(--accent); font-weight: bold; font-size: 13px; }
+      header .badge { padding: 2px 8px; border: 1px solid var(--line); border-radius: 3px;
+        color: var(--muted); font-size: 10px; letter-spacing: 2px; cursor: pointer; }
+      header .badge.active { color: var(--accent); border-color: var(--line-strong); background: rgba(0,200,255,0.08); }
+      header .spacer { flex: 1; }
+      #status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); display: inline-block; }
+      #status-dot.ready { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+      #status-dot.starting { background: var(--warn); }
+      #status-dot.error { background: var(--err); }
+      main { padding: 12px; display: grid; grid-template-columns: 220px 1fr; gap: 12px; height: calc(100% - 50px); overflow: hidden; }
+      .sidebar { display: flex; flex-direction: column; gap: 6px; }
+      .nav-item { padding: 8px 12px; border: 1px solid var(--line); background: var(--bg2);
+        color: #cfe3ff; cursor: pointer; letter-spacing: 1.5px; font-size: 11px; border-radius: 3px; }
+      .nav-item:hover { background: rgba(0,200,255,0.10); }
+      .nav-item.active { background: rgba(0,200,255,0.18); border-color: var(--line-strong); color: var(--accent); }
+      .view { display: none; overflow-y: auto; padding-right: 6px; }
+      .view.active { display: block; }
+      .panel { border: 1px solid var(--line); background: var(--bg2); border-radius: 4px; padding: 12px; margin-bottom: 12px; }
+      .panel h2 { margin: 0 0 8px; font-size: 11px; color: var(--accent);
+        letter-spacing: 3px; text-transform: uppercase; }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      button { background: rgba(0,200,255,0.08); color: var(--accent); border: 1px solid var(--line);
+        padding: 6px 12px; font-family: inherit; font-size: 11px; letter-spacing: 1.5px;
+        cursor: pointer; border-radius: 3px; }
+      button:hover { background: rgba(0,200,255,0.18); }
+      button:disabled { opacity: 0.4; cursor: not-allowed; }
+      input, textarea, select { background: #000810; color: #cfe3ff; border: 1px solid var(--line);
+        padding: 6px 8px; font-family: inherit; font-size: 11px; border-radius: 3px; min-width: 200px; }
+      label { color: var(--muted); font-size: 10px; letter-spacing: 1.5px; text-transform: uppercase; }
+      .form-grid { display: grid; grid-template-columns: 160px 1fr; gap: 8px 12px; align-items: center; }
+      #log { background: #000810; border: 1px solid var(--line); border-radius: 3px;
+        padding: 8px; height: 280px; overflow-y: auto; font-size: 11px; line-height: 1.4; }
+      .log-INFO { color: var(--accent); }
+      .log-WARN { color: var(--warn); }
+      .log-ERROR { color: var(--err); }
+      .log-SUCCESS { color: var(--ok); }
+      .muted { color: var(--muted); }
+      /* Workflow grid (V-cycle) */
+      .vcycle { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+      .node { border: 1px solid var(--line); padding: 8px; border-radius: 3px; cursor: pointer;
+        background: rgba(0,200,255,0.04); }
+      .node:hover { background: rgba(0,200,255,0.12); }
+      .node .nid { color: var(--accent); font-weight: bold; letter-spacing: 1.5px; }
+      .node .lbl { color: var(--muted); font-size: 10px; margin-top: 4px; }
+      .node.running { border-color: var(--warn); box-shadow: 0 0 6px rgba(227,179,65,0.3); }
+      .node.done { border-color: var(--ok); }
+      .node.error { border-color: var(--err); }
+      /* HUD reactor */
+      .hud { display: grid; grid-template-columns: 1fr 240px; gap: 12px; }
+      .reactor-wrap { display: flex; flex-direction: column; align-items: center; padding: 20px; }
+      svg.reactor { width: 200px; height: 200px; }
+      /* Trace graph */
+      svg.trace { width: 100%; height: 320px; border: 1px solid var(--line); border-radius: 3px;
+        background: #000810; }
+      .trace-node { fill: rgba(0,200,255,0.18); stroke: var(--accent); }
+      .trace-edge { stroke: var(--line-strong); fill: none; }
+      .trace-label { fill: #cfe3ff; font-size: 10px; }
+      /* Review modal */
+      .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100;
+        align-items: center; justify-content: center; }
+      .modal-backdrop.show { display: flex; }
+      .modal { background: var(--bg); border: 1px solid var(--line-strong);
+        padding: 20px; border-radius: 4px; max-width: 480px; box-shadow: 0 0 40px rgba(0,200,255,0.3); }
+      .modal h3 { color: var(--accent); margin: 0 0 12px; letter-spacing: 2px; }
+      /* Infra status grid */
+      .infra-grid { display: grid; grid-template-columns: 1fr 80px; gap: 4px 12px; font-size: 11px; }
+      .infra-grid .ok { color: var(--ok); }
+      .infra-grid .down { color: var(--err); }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span class="brand">C.I.P.H.E.R</span>
+      <span id="mode-hud" class="badge active">HUD</span>
+      <span id="mode-devnex" class="badge">DEVNEX</span>
+      <span id="status-dot"></span>
+      <span id="status-text" class="muted">connecting…</span>
+      <span class="spacer"></span>
+      <span class="muted">{{A2A_BASE}}</span>
+    </header>
+
+    <main>
+      <aside class="sidebar">
+        <div class="nav-item active" data-view="dashboard">Dashboard</div>
+        <div class="nav-item" data-view="workflow">Workflow</div>
+        <div class="nav-item" data-view="trace">Trace</div>
+        <div class="nav-item" data-view="review">Review</div>
+        <div class="nav-item" data-view="output">Output Log</div>
+        <div class="nav-item" data-view="config">Config</div>
+        <div class="nav-item" data-view="voice">Voice</div>
+      </aside>
+
+      <section>
+        <!-- DASHBOARD (HUD Mode 0) -->
+        <div class="view active" data-view="dashboard">
+          <div class="panel">
+            <h2>CIPHER HUD</h2>
+            <div class="hud">
+              <div class="reactor-wrap">
+                <svg class="reactor" viewBox="0 0 200 200" id="reactor-svg">
+                  <defs>
+                    <radialGradient id="g1" cx="50%" cy="50%" r="50%">
+                      <stop offset="0%" stop-color="#00c8ff" stop-opacity="0.9"/>
+                      <stop offset="60%" stop-color="#00c8ff" stop-opacity="0.3"/>
+                      <stop offset="100%" stop-color="#00c8ff" stop-opacity="0"/>
+                    </radialGradient>
+                  </defs>
+                  <circle cx="100" cy="100" r="60" fill="url(#g1)"/>
+                  <circle cx="100" cy="100" r="55" fill="none" stroke="#00c8ff" stroke-width="1.2" stroke-opacity="0.6"/>
+                  <circle cx="100" cy="100" r="40" fill="none" stroke="#00c8ff" stroke-width="0.8"/>
+                  <circle cx="100" cy="100" r="14" fill="#00c8ff"/>
+                  <g id="reactor-ring" transform-origin="100 100">
+                    <circle cx="100" cy="100" r="78" fill="none" stroke="#00c8ff" stroke-width="0.5"
+                            stroke-dasharray="3 6" stroke-opacity="0.5"/>
+                  </g>
+                </svg>
+                <div class="muted" id="reactor-state">IDLE</div>
+              </div>
+              <div class="panel" style="margin: 0;">
+                <h2>Infra Status</h2>
+                <div class="infra-grid" id="infra-grid">
+                  <div class="muted">— polling —</div><div></div>
+                </div>
+                <div class="row" style="margin-top: 8px;">
+                  <button id="btn-infra-refresh">Refresh</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- WORKFLOW -->
+        <div class="view" data-view="workflow">
+          <div class="panel">
+            <h2>V-Cycle Workflow</h2>
+            <div class="row" style="margin-bottom: 10px;">
+              <button id="btn-full">Run Full V-Cycle</button>
+              <button id="btn-reset">Reset</button>
+            </div>
+            <div class="vcycle" id="vcycle-grid"></div>
+          </div>
+        </div>
+
+        <!-- TRACE -->
+        <div class="view" data-view="trace">
+          <div class="panel">
+            <h2>Artifact Trace</h2>
+            <div class="row" style="margin-bottom: 8px;">
+              <button id="btn-trace-refresh">Refresh</button>
+              <span class="muted">Live edges discovered from run events.</span>
+            </div>
+            <svg class="trace" id="trace-svg" viewBox="0 0 1000 320"></svg>
+          </div>
+        </div>
+
+        <!-- REVIEW -->
+        <div class="view" data-view="review">
+          <div class="panel">
+            <h2>Human Review Queue</h2>
+            <div id="review-empty" class="muted">No pending reviews.</div>
+            <div id="review-list"></div>
+          </div>
+        </div>
+
+        <!-- OUTPUT -->
+        <div class="view" data-view="output">
+          <div class="panel">
+            <h2>Event Log</h2>
+            <div id="log"></div>
+          </div>
+        </div>
+
+        <!-- CONFIG -->
+        <div class="view" data-view="config">
+          <div class="panel">
+            <h2>SWC Configuration</h2>
+            <div class="form-grid" id="config-form">
+              <label>SWC name</label>          <input id="cfg-SWC_name" placeholder="Dio"/>
+              <label>Workspace path</label>    <input id="cfg-workspace_path" placeholder="C:/path/to/swc"/>
+              <label>Target ASIL</label>
+              <select id="cfg-target_asil">
+                <option>QM</option><option selected>ASIL-B</option><option>ASIL-C</option><option>ASIL-D</option>
+              </select>
+              <label>Domain pack</label>
+              <select id="cfg-domain_pack">
+                <option value="iso26262_asil_b">iso26262-asil-b</option>
+                <option value="iso26262_asil_c">iso26262-asil-c</option>
+                <option value="iso26262_asil_d">iso26262-asil-d</option>
+                <option value="aspice_l3">aspice-l3</option>
+                <option value="misra_c_2012">misra-c-2012</option>
+              </select>
+            </div>
+            <div class="row" style="margin-top: 12px;">
+              <button id="btn-cfg-save">Save</button>
+              <button id="btn-cfg-load">Reload</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- VOICE -->
+        <div class="view" data-view="voice">
+          <div class="panel">
+            <h2>Voice Interface</h2>
+            <div class="muted">
+              Browser-side mic capture → LLM Gateway TTS/STT. Requires the headless host to expose
+              <code>/cipher/voice/transcribe</code> (Sprint 6 wires a stub).
+            </div>
+            <div class="row" style="margin-top: 12px;">
+              <button id="btn-voice-start">Start</button>
+              <button id="btn-voice-stop" disabled>Stop</button>
+              <span class="muted" id="voice-state">VOICE: IDLE</span>
+            </div>
+            <div id="voice-transcript" class="muted" style="margin-top: 8px; min-height: 40px;"></div>
+          </div>
+        </div>
+
+      </section>
+    </main>
+
+    <!-- Review Modal -->
+    <div class="modal-backdrop" id="review-modal">
+      <div class="modal">
+        <h3>HUMAN REVIEW</h3>
+        <div id="review-modal-body" style="margin-bottom: 12px;"></div>
+        <div class="row">
+          <button id="review-approve">Approve</button>
+          <button id="review-reject">Reject</button>
+        </div>
+      </div>
+    </div>
+
+    <script nonce="{{NONCE}}">
+      const vscode = acquireVsCodeApi();
+      const A2A = "{{A2A_BASE}}";
+      const NODES = [
+        ["S1N1","LLD Gen"],["S2N1","HLD-LLD Trace"],["S3N1","Coding"],
+        ["S4N1","Unit Test"],["S5N1","Integration"],["S6N1","System Test"],
+        ["S7N1","Verification"],["S8N1","Validation"],["S9N1","Release"],
+        ["R1N1","Review A"],["R2N1","Review B"],["R3N1","Review C"],["R4N1","Review D"],
+      ];
+      let pendingReview = null; // { runId, nodeId, message }
+
+      const $ = (id) => document.getElementById(id);
+
+      function addLog(msg, level = 'INFO') {
+        const d = document.createElement('div');
+        d.className = 'log-' + level;
+        const ts = new Date().toISOString().substring(11, 19);
+        d.textContent = `[${ts}] ${msg}`;
+        $('log').appendChild(d);
+        $('log').scrollTop = $('log').scrollHeight;
+      }
+      function setStatus(state, detail) {
+        $('status-dot').className = state;
+        $('status-text').textContent = state === 'ready' ? ('online — ' + (detail || '')) : (detail || state);
+      }
+
+      // ── Nav ───────────────────────────────────────────────────────────
+      document.querySelectorAll('.nav-item').forEach(el => {
+        el.addEventListener('click', () => {
+          document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+          document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+          el.classList.add('active');
+          document.querySelector(`.view[data-view="${el.dataset.view}"]`).classList.add('active');
+        });
+      });
+      // Mode toggle (HUD ↔ DEVNEX)
+      $('mode-hud').addEventListener('click', () => {
+        $('mode-hud').classList.add('active'); $('mode-devnex').classList.remove('active');
+        document.querySelector('.nav-item[data-view="dashboard"]').click();
+      });
+      $('mode-devnex').addEventListener('click', () => {
+        $('mode-devnex').classList.add('active'); $('mode-hud').classList.remove('active');
+        document.querySelector('.nav-item[data-view="workflow"]').click();
+      });
+
+      // ── Workflow grid ─────────────────────────────────────────────────
+      const $vc = $('vcycle-grid');
+      NODES.forEach(([nid, label]) => {
+        const n = document.createElement('div');
+        n.className = 'node'; n.dataset.nid = nid;
+        n.innerHTML = `<div class="nid">${nid}</div><div class="lbl">${label}</div>`;
+        n.addEventListener('click', () => runNode(nid));
+        $vc.appendChild(n);
+      });
+      function setNodeState(nid, state) {
+        const el = $vc.querySelector(`.node[data-nid="${nid}"]`);
+        if (!el) return;
+        el.classList.remove('running','done','error');
+        if (state) el.classList.add(state);
+      }
+      async function runNode(nid) {
+        try {
+          const r = await fetch(`${A2A}/cipher/nodes/${nid}/run`, { method: 'POST' });
+          const j = await r.json();
+          addLog(`Node ${nid} requested — run ${j.runId}`, 'SUCCESS');
+        } catch (e) { addLog(`runNode failed: ${e}`, 'ERROR'); }
+      }
+
+      // ── Workflow buttons ──────────────────────────────────────────────
+      $('btn-full').addEventListener('click', async () => {
+        try {
+          const r = await fetch(A2A + '/cipher/runs/full', { method: 'POST' });
+          const j = await r.json();
+          addLog('Full V-cycle requested — run ' + j.runId, 'SUCCESS');
+        } catch (e) { addLog('runs/full failed: ' + e, 'ERROR'); }
+      });
+      $('btn-reset').addEventListener('click', async () => {
+        try {
+          await fetch(A2A + '/cipher/workflow/reset', { method: 'POST' });
+          NODES.forEach(([nid]) => setNodeState(nid, null));
+          addLog('Workflow reset', 'INFO');
+        } catch (e) { addLog('reset failed: ' + e, 'ERROR'); }
+      });
+
+      // ── Config ────────────────────────────────────────────────────────
+      async function loadConfig() {
+        try {
+          const r = await fetch(A2A + '/cipher/config');
+          const j = await r.json();
+          ['SWC_name','workspace_path','target_asil','domain_pack'].forEach(k => {
+            if (j[k] !== undefined) $('cfg-' + k).value = j[k];
+          });
+        } catch (e) { addLog('config load failed: ' + e, 'ERROR'); }
+      }
+      async function saveConfig() {
+        const body = {
+          SWC_name: $('cfg-SWC_name').value,
+          workspace_path: $('cfg-workspace_path').value,
+          target_asil: $('cfg-target_asil').value,
+          domain_pack: $('cfg-domain_pack').value,
+        };
+        try {
+          const r = await fetch(A2A + '/cipher/config', {
+            method: 'PUT', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body),
+          });
+          const j = await r.json();
+          addLog('Config saved — keys: ' + j.keys.join(', '), 'SUCCESS');
+        } catch (e) { addLog('config save failed: ' + e, 'ERROR'); }
+      }
+      $('btn-cfg-save').addEventListener('click', saveConfig);
+      $('btn-cfg-load').addEventListener('click', loadConfig);
+
+      // ── Infra status polling ──────────────────────────────────────────
+      async function refreshInfra() {
+        try {
+          const r = await fetch(A2A + '/cipher/infra/status');
+          const j = await r.json();
+          const grid = $('infra-grid');
+          grid.innerHTML = '';
+          Object.entries(j.services || {}).forEach(([name, ok]) => {
+            const a = document.createElement('div'); a.textContent = name;
+            const b = document.createElement('div');
+            b.textContent = ok ? 'UP' : 'DOWN';
+            b.className = ok ? 'ok' : 'down';
+            grid.appendChild(a); grid.appendChild(b);
+          });
+        } catch (e) {
+          $('infra-grid').innerHTML = '<div class="muted">unreachable</div><div></div>';
+        }
+      }
+      $('btn-infra-refresh').addEventListener('click', refreshInfra);
+
+      // ── Trace ─────────────────────────────────────────────────────────
+      const traceNodes = new Map(); // nid -> {x, y}
+      function renderTrace() {
+        const svg = $('trace-svg');
+        svg.innerHTML = '';
+        let i = 0;
+        const cx = 100, dx = 130, cy = 160, dy = 80;
+        traceNodes.clear();
+        NODES.forEach(([nid, label]) => {
+          const x = cx + (i % 7) * dx;
+          const y = cy + (i < 7 ? -dy : dy);
+          traceNodes.set(nid, {x, y});
+          i++;
+        });
+        // edges (sequential)
+        for (let k = 0; k < NODES.length - 1; k++) {
+          const a = traceNodes.get(NODES[k][0]);
+          const b = traceNodes.get(NODES[k+1][0]);
+          if (a && b) {
+            const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line.setAttribute('x1', a.x); line.setAttribute('y1', a.y);
+            line.setAttribute('x2', b.x); line.setAttribute('y2', b.y);
+            line.setAttribute('class', 'trace-edge');
+            svg.appendChild(line);
+          }
+        }
+        traceNodes.forEach((pos, nid) => {
+          const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+          c.setAttribute('cx', pos.x); c.setAttribute('cy', pos.y); c.setAttribute('r', 22);
+          c.setAttribute('class', 'trace-node');
+          const t = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          t.setAttribute('x', pos.x); t.setAttribute('y', pos.y + 4);
+          t.setAttribute('text-anchor', 'middle'); t.setAttribute('class', 'trace-label');
+          t.textContent = nid;
+          svg.appendChild(c); svg.appendChild(t);
+        });
+      }
+      $('btn-trace-refresh').addEventListener('click', renderTrace);
+      renderTrace();
+
+      // ── Review queue ──────────────────────────────────────────────────
+      function showReview(runId, nodeId, message) {
+        pendingReview = { runId, nodeId, message };
+        $('review-modal-body').textContent = `[${nodeId}] ${message}`;
+        $('review-modal').classList.add('show');
+        // sidebar entry
+        $('review-empty').style.display = 'none';
+        const item = document.createElement('div');
+        item.className = 'panel'; item.dataset.runId = runId;
+        item.innerHTML = `<strong>${nodeId}</strong> — ${message}`;
+        $('review-list').appendChild(item);
+      }
+      async function submitReview(approved) {
+        if (!pendingReview) return;
+        try {
+          await fetch(`${A2A}/cipher/runs/${pendingReview.runId}/review`, {
+            method: 'POST', headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ approved }),
+          });
+          addLog(`Review ${approved ? 'APPROVED' : 'REJECTED'} for ${pendingReview.nodeId}`,
+                 approved ? 'SUCCESS' : 'WARN');
+          // remove from sidebar
+          const item = $('review-list').querySelector(`[data-run-id="${pendingReview.runId}"]`);
+          if (item) item.remove();
+          if (!$('review-list').children.length) $('review-empty').style.display = '';
+        } catch (e) { addLog('review submit failed: ' + e, 'ERROR'); }
+        $('review-modal').classList.remove('show');
+        pendingReview = null;
+      }
+      $('review-approve').addEventListener('click', () => submitReview(true));
+      $('review-reject').addEventListener('click', () => submitReview(false));
+
+      // ── Voice ─────────────────────────────────────────────────────────
+      let mediaRecorder = null;
+      let voiceChunks = [];
+      $('btn-voice-start').addEventListener('click', async () => {
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+          mediaRecorder = new MediaRecorder(stream);
+          voiceChunks = [];
+          mediaRecorder.ondataavailable = (e) => voiceChunks.push(e.data);
+          mediaRecorder.onstop = async () => {
+            const blob = new Blob(voiceChunks, { type: 'audio/webm' });
+            try {
+              const r = await fetch(A2A + '/cipher/voice/transcribe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/octet-stream' },
+                body: blob,
+              });
+              const j = await r.json();
+              $('voice-transcript').textContent = j.text || j.detail || '(no transcript)';
+            } catch (e) { $('voice-transcript').textContent = 'transcribe failed: ' + e; }
+            stream.getTracks().forEach(t => t.stop());
+          };
+          mediaRecorder.start();
+          $('voice-state').textContent = 'VOICE: LISTENING';
+          $('btn-voice-start').disabled = true;
+          $('btn-voice-stop').disabled = false;
+        } catch (e) { addLog('mic permission failed: ' + e, 'ERROR'); }
+      });
+      $('btn-voice-stop').addEventListener('click', () => {
+        if (mediaRecorder) mediaRecorder.stop();
+        $('voice-state').textContent = 'VOICE: IDLE';
+        $('btn-voice-start').disabled = false;
+        $('btn-voice-stop').disabled = true;
+      });
+
+      // ── SSE stream ────────────────────────────────────────────────────
+      function openStream() {
+        try {
+          const es = new EventSource(A2A + '/events/sse');
+          es.onopen = () => addLog('SSE stream open', 'SUCCESS');
+          es.onerror = () => addLog('SSE stream error', 'ERROR');
+          es.onmessage = (ev) => {
+            try {
+              const o = JSON.parse(ev.data);
+              const k = o.kind || 'evt';
+              const p = o.payload || {};
+              if (k === 'log') {
+                addLog((o.nodeId ? `[${o.nodeId}] ` : '') + p.message, p.level || 'INFO');
+              } else if (k === 'node.started') {
+                if (o.nodeId) setNodeState(o.nodeId, 'running');
+                $('reactor-state').textContent = 'BUSY';
+              } else if (k === 'node.complete') {
+                if (o.nodeId) setNodeState(o.nodeId, 'done');
+                $('reactor-state').textContent = 'IDLE';
+                addLog(`${o.nodeId} complete`, 'SUCCESS');
+              } else if (k === 'error') {
+                if (o.nodeId) setNodeState(o.nodeId, 'error');
+                addLog(p.message || 'error', 'ERROR');
+              } else if (k === 'review.needed') {
+                showReview(o.runId, o.nodeId, p.message);
+              } else if (k === 'progress') {
+                addLog(`[${p.pct}%] ${p.message}`);
+              } else if (k === 'status') {
+                addLog(`status: ${JSON.stringify(p)}`);
+              }
+            } catch (err) { addLog('parse: ' + ev.data); }
+          };
+        } catch (err) { addLog('EventSource init failed: ' + err, 'ERROR'); }
+      }
+
+      window.addEventListener('message', (e) => {
+        const m = e.data;
+        if (m?.type === 'host.status') {
+          setStatus(m.state, m.detail);
+          if (m.state === 'ready') { openStream(); loadConfig(); refreshInfra(); }
+        }
+      });
+
+      // Reactor ring spin
+      let ringAngle = 0;
+      setInterval(() => {
+        ringAngle = (ringAngle + 1) % 360;
+        const ring = $('reactor-ring');
+        if (ring) ring.setAttribute('transform', `rotate(${ringAngle} 100 100)`);
+      }, 60);
+
+      vscode.postMessage({ type: 'webview.ready' });
+      setInterval(refreshInfra, 10000); // poll infra every 10s
+    </script>
+  </body>
+</html>

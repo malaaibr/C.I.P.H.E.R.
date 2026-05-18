@@ -1,0 +1,4 @@
+{
+  "SWE.3": ["macro_definition", "type_definition", "misra_deviation", "function_signature", "error_handler", "review_needed"],
+  "SWE.4": ["macro_definition", "type_definition", "misra_deviation", "function_signature", "error_handler"]
+}

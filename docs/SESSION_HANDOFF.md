@@ -243,3 +243,181 @@ python run_poc.py
 4. **Add more HUD dashboard views** — Currently 10 views in center QStackedWidget, most are placeholder
 5. **System status live updates** — Dashboard right column shows static service status; wire health check polling
 6. **Commit all changes** — Stage only code files (no .env, no __pycache__), write descriptive commit message
+
+---
+
+## SESSION 2 — Citation-Aware Prompting (CAP) Architecture Enhancements
+
+**Date**: 2026-05-17
+**Commit**: `e7f8caa` on `main` (pushed to `https://github.com/malaaibr/C.I.P.H.E.R.`)
+
+---
+
+## 9. WHAT WAS ACCOMPLISHED (SESSION 2)
+
+### 9.1 Source Analysis
+Two reference PDFs were analyzed in full and cross-referenced against the CIPHER codebase:
+1. **Citation-Aware Prompting for Grounded, Production-Grade LLM Agents** (v3.0, May 2026, 26 pages) — CAP architecture, CRC chains, well-formedness predicates, DVF loop, domain packs, metrics
+2. **CIPHER Architecture HLD R3.0** (CIPHER-HLD-001, May 2026, 22 pages) — Trust tiers, SKILL.md progressive disclosure, temporal artifact relations, budget enforcement
+
+### 9.2 Enhancement Plan — WBS-0004
+Produced `docs/wbs/WBS-0004-cap-architecture-enhancements.md` with 15 prioritized enhancements across 6 phases, each mapped to a specific CIPHER layer, source PDF section, and rationale.
+
+### 9.3 Enhancements Implemented (12 of 15)
+
+| # | Enhancement | Layer | Key Files Created/Modified |
+|---|------------|-------|---------------------------|
+| E-001 | CRC Schema (Cited Reasoning Chain) | Core | `cipher/core/schemas/crc.py` |
+| E-002 | IssueReport + WF Violation Schema | Core | `cipher/core/schemas/issue_report.py` |
+| E-003 | ContextManifest Schema | Core | `cipher/core/schemas/context_manifest.py` |
+| E-004 | CAP Validator (WF₁–WF₅) | GCL | `cipher/gcl/cap_validator/validator.py` |
+| E-005 | ISO 26262 ASIL-B Domain Pack | GCL | `cipher/gcl/domain_packs/iso26262_asil_b/` |
+| E-006 | Budget Enforcer | ARE | `cipher/are/budget_enforcer/enforcer.py` |
+| E-007 | Citation-Aware LLD Prompt v2 | AAL | `cipher/agents/devnex_assistant/prompts/lld_gen_v2.md` |
+| E-008 | Draft-Verify-Finalize Loop | AAL | `cipher/agents/devnex_assistant/core/dvf_loop.py` |
+| E-009 | CAP Metrics (8 metrics) | Core | `cipher/core/cap_metrics.py` |
+| E-010 | Trust Tiers on AgentCard | Core | `cipher/core/schemas/agent_card.py` (modified) |
+| E-011 | Temporal ArtifactRelation edges | Core | `cipher/core/schemas/artifact_relation.py` (modified) |
+| E-015 | 13 SKILL.md Definitions | AAL | `cipher/agents/devnex_assistant/skills/definitions/*.SKILL.md` |
+
+### 9.4 Deferred Enhancements (3 of 15)
+| # | Enhancement | Reason Deferred |
+|---|------------|-----------------|
+| E-012 | Enhanced Skill Loader 3-stage progressive disclosure | Requires `loader.py` refactor + runtime integration |
+| E-013 | Runtime Prompt Contract Assembly | Requires Orchestrator redesign |
+| E-014 | Context Gap Detection | Requires Memory Agent + Research Agent wiring |
+
+### 9.5 Tests Written
+51 new unit tests across 7 test files, all passing (142/142 total):
+
+| Test File | Tests | Coverage |
+|-----------|-------|----------|
+| `tests/unit/test_crc_schema.py` | 11 | CRCChain, CRCStep, Citation, Claim, enums |
+| `tests/unit/test_cap_validator.py` | 10 | WF₁–WF₅ validation, domain pack loading |
+| `tests/unit/test_issue_report.py` | 4 | IssueReport, ViolationType, ValidationVerdict |
+| `tests/unit/test_budget_enforcer.py` | 5 | Token/call/time limits, auto-start, BudgetExceededError |
+| `tests/unit/test_cap_metrics.py` | 12 | All 8 CAP metrics + compute_metrics() |
+| `tests/unit/test_artifact_relation.py` | 4 | New relation types, temporal fields, confidence |
+| `tests/unit/test_agent_card.py` | 5 | TrustTier enum, AgentCard defaults, SkillDescriptor ASIL |
+
+---
+
+## 10. KEY TECHNICAL CONCEPTS (SESSION 2)
+
+### Cited Reasoning Chain (CRC)
+- Typed object `cipher.cap.crc.v1` — sequence of `(thought, citations[], claim)` triples
+- Each `Citation` has `artifact_uri`, optional `span`, and `evidence_type` (enum: REQUIREMENT, PRIOR_DESIGN, TEST_RESULT, STANDARD_CLAUSE, REVIEW_COMMENT)
+- Each `Claim` has `kind` (13 ClaimKind values) and `fields` dict
+
+### 6 Well-Formedness Predicates
+- **WF₁**: Non-empty citations (every step must cite something)
+- **WF₂**: URI resolution (all URIs must resolve against ContextManifest)
+- **WF₃**: Type compatibility (ClaimKind → allowed EvidenceType, per domain pack)
+- **WF₄**: ASIL coherence (citation ASIL ≥ target ASIL)
+- **WF₅**: Phase appropriateness (ClaimKind allowed for the ASPICE phase)
+- **WF₆**: Structured field consistency (stub — needs MKF runtime)
+
+### Draft-Verify-Finalize (DVF) Loop
+- 3-state machine: DRAFT → VERIFY → REVISE (loop) → FINALIZE or HITL_ESCALATION
+- Max revision attempts configurable via domain pack (`max_revision_attempts`)
+- Escalates to human review if validation fails after R_max attempts
+
+### Domain Packs
+- Externalized safety rules in `cipher/gcl/domain_packs/{pack}/`
+- `pack.yaml`: metadata + applicable standards
+- `schemas/permitted_types.json`: ClaimKind → EvidenceType[] mapping
+- `schemas/phase_kinds.json`: ASPICE phase → ClaimKind[] mapping
+
+### CAP Metrics
+8 metrics in `cipher/core/cap_metrics.py`:
+- Citation Coverage (CC), Citation Support Rate (CSR)
+- Attribution Precision/Recall (against gold-set)
+- Determinism Score (DS), Hallucination Rate (HR)
+- ASPICE Evidence Completeness (AEC)
+- `CAPMetricsReport` dataclass + `compute_metrics()` convenience function
+
+---
+
+## 11. FILES CREATED (SESSION 2)
+
+```
+cipher/core/schemas/crc.py                              ← CRC chain/step/citation/claim schemas
+cipher/core/schemas/issue_report.py                     ← Validation issue report + violation types
+cipher/core/schemas/context_manifest.py                 ← Evidence manifest with URI resolution
+cipher/core/cap_metrics.py                              ← 8 CAP metrics + report dataclass
+cipher/gcl/cap_validator/validator.py                    ← WF₁–WF₅ validation engine
+cipher/gcl/cap_validator/__init__.py
+cipher/gcl/domain_packs/iso26262_asil_b/pack.yaml       ← Domain pack metadata
+cipher/gcl/domain_packs/iso26262_asil_b/schemas/permitted_types.json
+cipher/gcl/domain_packs/iso26262_asil_b/schemas/phase_kinds.json
+cipher/are/budget_enforcer/enforcer.py                   ← Token/call/time budget enforcement
+cipher/are/budget_enforcer/__init__.py
+cipher/agents/devnex_assistant/prompts/lld_gen_v2.md     ← Citation-aware LLD prompt
+cipher/agents/devnex_assistant/core/dvf_loop.py          ← Draft-Verify-Finalize state machine
+cipher/agents/devnex_assistant/skills/definitions/vcycle_s1n1.SKILL.md  ← (13 SKILL.md files)
+...through vcycle_s9n1.SKILL.md
+docs/wbs/WBS-0004-cap-architecture-enhancements.md      ← Master enhancement plan
+tests/unit/test_crc_schema.py
+tests/unit/test_cap_validator.py
+tests/unit/test_issue_report.py
+tests/unit/test_budget_enforcer.py
+tests/unit/test_cap_metrics.py
+tests/unit/test_artifact_relation.py
+tests/unit/test_agent_card.py
+```
+
+### Files Modified (Session 2)
+```
+cipher/core/schemas/artifact_relation.py   ← +4 RelationType values, +3 temporal fields
+cipher/core/schemas/agent_card.py          ← +TrustTier enum, +trust_tier field, +ASIL/ASPICE on SkillDescriptor
+cipher/core/schemas/__init__.py            ← Exports all new types
+```
+
+---
+
+## 12. ISSUES ENCOUNTERED (SESSION 2)
+
+### Issue 6: PDF Read Tool Failure on Windows (FIXED)
+- **Symptom**: Read tool couldn't parse PDFs — `pdftoppm` not found
+- **Fix**: Installed PyPDF2 (`pip install PyPDF2`), extracted text programmatically
+
+### Issue 7: Unicode Encoding Error (FIXED)
+- **Symptom**: `cp1252` codec can't encode '→' character when printing PDF text
+- **Fix**: `sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')`
+
+### Issue 8: Missing pytest Import (FIXED)
+- **Symptom**: `test_cap_metrics.py` used `pytest.approx()` without importing pytest
+- **Fix**: Added `import pytest` at top of file
+
+---
+
+## 13. GIT STATE (After Session 2)
+
+- **Branch**: `main`, up to date with `origin/main`
+- **Working tree**: clean
+- **Latest commits**:
+  - `e7f8caa` feat(cap): Citation-Aware Prompting architecture + SKILL.md progressive disclosure
+  - `0e430fa` docs: per-layer HLD/LLD + per-agent docs + master index appendices
+  - `c2b5799` feat(demo): AUTOSAR Dio Full Demo Trial bundle (5-component vertical)
+  - `fca585c` feat(gui): unify CIPHER HUD + DevNex workspace into one PyQt6 app
+  - `926afdc` chore(gitignore): ignore deploy/local/data/ docker runtime volumes
+
+---
+
+## 14. SUGGESTED NEXT STEPS (Updated)
+
+### From Session 1 (still open)
+1. Test actual node execution with real SWC project
+2. Wire CipherOrchestrator as parent of DevNex
+3. Connect voice pipeline (TTS/STT)
+4. Add more HUD dashboard views
+5. System status live updates
+
+### From Session 2 (new)
+6. **Implement E-012**: Enhanced Skill Loader with 3-stage progressive disclosure (Discovery → Activation → Execution)
+7. **Implement E-013**: Runtime Prompt Contract Assembly in Orchestrator
+8. **Implement E-014**: Context Gap Detection via Memory Agent + Research Agent
+9. **Complete WF₆**: Structured field consistency check (needs MKF Knowledge Graph runtime)
+10. **Add more domain packs**: ISO 26262 ASIL-C/D, ASPICE Level 3, MISRA-C:2012
+11. **Wire DVF loop into DevNex orchestrator**: Replace direct LLM calls with DVF loop for citation-aware generation
+12. **Integrate CAP metrics into CI**: Run `compute_metrics()` on generated CRC chains as part of test pipeline

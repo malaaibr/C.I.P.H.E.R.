@@ -235,7 +235,7 @@ class CipherMainWindow(QMainWindow):
     to workers that execute V-cycle nodes in background QThreads.
     """
 
-    def __init__(self, parent=None) -> None:
+    def __init__(self, parent=None, parent_orchestrator=None) -> None:
         super().__init__(parent)
         self.setWindowTitle("C.I.P.H.E.R — V-Cycle Intelligence Platform")
         self.resize(1360, 880)
@@ -245,6 +245,7 @@ class CipherMainWindow(QMainWindow):
         self._active_worker = None
         self._orchestrator = None
         self._gca_invoker = None
+        self._parent_orchestrator = parent_orchestrator  # CipherOrchestrator (mother node)
 
         self._build_ui()
         self.statusBar().showMessage("C.I.P.H.E.R  |  ONLINE  |  A2A :8100  |  LLM :8200")
@@ -471,6 +472,14 @@ class CipherMainWindow(QMainWindow):
                 gca = self._get_gca_invoker()
                 if gca is not None:
                     self._orchestrator._gca_invoker = gca
+
+                # Register as child of CipherOrchestrator (backlog #2 — parent wiring).
+                if self._parent_orchestrator is not None:
+                    try:
+                        self._parent_orchestrator.register_child("devnex", self._orchestrator)
+                        self.append_log("DevNex registered as child of CipherOrchestrator.", level="INFO")
+                    except Exception as e:
+                        self.append_log(f"Parent registration failed: {e}", level="WARN")
 
                 self.append_log("DevNex orchestrator initialized.", level="SUCCESS")
             except Exception as e:

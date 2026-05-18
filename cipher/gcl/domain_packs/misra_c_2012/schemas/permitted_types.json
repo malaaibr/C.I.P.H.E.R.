@@ -1,0 +1,8 @@
+{
+  "macro_definition": ["STANDARD_RULE"],
+  "type_definition": ["STANDARD_RULE", "PRIOR_DESIGN"],
+  "misra_deviation": ["STANDARD_RULE", "TEST_VECTOR"],
+  "function_signature": ["STANDARD_RULE", "PRIOR_DESIGN"],
+  "error_handler": ["STANDARD_RULE"],
+  "review_needed": ["STANDARD_RULE", "PRIOR_DESIGN"]
+}

@@ -1,0 +1,92 @@
+{
+  "name": "cipher-vscode",
+  "displayName": "CIPHER — Cognitive Intelligent Platform",
+  "description": "Multi-agent AI platform for automotive V-Cycle SDLC — embedded in VSCode.",
+  "version": "0.1.0",
+  "publisher": "cipher",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other", "AI"],
+  "activationEvents": [
+    "onView:cipher.mainView",
+    "onCommand:cipher.open",
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "cipher",
+          "title": "CIPHER",
+          "icon": "icons/cipher-activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "cipher": [
+        {
+          "id": "cipher.mainView",
+          "type": "webview",
+          "name": "CIPHER",
+          "icon": "icons/cipher-activity.svg"
+        }
+      ]
+    },
+    "commands": [
+      { "command": "cipher.open", "title": "CIPHER: Open Panel" },
+      { "command": "cipher.restartHost", "title": "CIPHER: Restart Python Host" },
+      { "command": "cipher.runFull", "title": "CIPHER: Run Full V-Cycle" },
+      { "command": "cipher.resetWorkflow", "title": "CIPHER: Reset Workflow" }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "cipher.open",
+          "group": "navigation",
+          "when": "config.cipher.showEditorButton"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CIPHER",
+      "properties": {
+        "cipher.pythonPath": {
+          "type": "string",
+          "default": "python",
+          "description": "Path to the Python interpreter that runs run_poc.py --headless."
+        },
+        "cipher.repoPath": {
+          "type": "string",
+          "default": "",
+          "description": "Absolute path to the CIPHER repo root. Empty = current workspace folder."
+        },
+        "cipher.ports.a2a": {
+          "type": "number",
+          "default": 8100,
+          "description": "Port for the A2A FastAPI server (must match Python host)."
+        },
+        "cipher.ports.gateway": {
+          "type": "number",
+          "default": 8200,
+          "description": "Port for the LLM Gateway FastAPI server."
+        },
+        "cipher.showEditorButton": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show the CIPHER button in the editor title bar."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.4.0",
+    "@vscode/vsce": "^2.24.0"
+  }
+}

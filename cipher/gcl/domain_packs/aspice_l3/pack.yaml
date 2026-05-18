@@ -1,0 +1,11 @@
+name: aspice-l3
+version: "1.0.0"
+description: >
+  Automotive SPICE v4.0 capability level 3 — process-focused pack. Requires
+  traceability between requirement and design claims; permits PRIOR_DESIGN
+  but only when a sibling REQUIREMENT exists in the same CRC.
+applicable_standards:
+  - ASPICE v4.0
+asil_level: QM
+max_revision_attempts: 3
+require_hitl_on_revision_exceeded: false

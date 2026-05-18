@@ -1,0 +1,13 @@
+name: iso26262-asil-d
+version: "1.0.0"
+description: >
+  ISO 26262 ASIL-D — strictest pack. Every safety-related claim must cite a
+  REQUIREMENT *and* a STANDARD_RULE. Macros and MISRA deviations are
+  forbidden without TEST_VECTOR proof.
+applicable_standards:
+  - ISO 26262-6:2018
+  - ASPICE v4.0
+  - MISRA C:2023
+asil_level: D
+max_revision_attempts: 1
+require_hitl_on_revision_exceeded: true
