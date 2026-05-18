@@ -129,14 +129,11 @@ For active development on the extension:
 
 ---
 
-## 8. CI build (GitHub Actions)
+## 8. CI build
 
-`.github/workflows/ci.yml` runs on every push to `main` and every PR:
-
-- Python 3.11 + 3.12 matrix → `pytest tests/unit`
-- Node 20 → builds + packages `.vsix`, uploads as artifact `cipher-vscode-vsix`
-
-Download the `.vsix` from the **Actions → Artifacts** tab.
+GitHub Actions / hosted CI is **intentionally out of scope** for this phase.
+The recipe in §2–§4 is the canonical build path — run it locally before
+distributing a `.vsix`.
 
 ---
 

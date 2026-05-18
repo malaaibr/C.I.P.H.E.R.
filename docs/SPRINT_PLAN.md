@@ -75,7 +75,7 @@ Foundations. The VSIX cannot exist until the Python side can run without Qt and 
 ### Sprint 4 — CAP integration sweep
 - [Backlog #11] Wire `DVFLoop` into DevNex orchestrator's LLM-touching nodes (replace direct LLM calls).
 - [Backlog #9] Implement WF₆ structured field consistency once MKF Knowledge Graph runtime is reachable from the validator.
-- [Backlog #12] Add `.github/workflows/ci.yml` + `pytest.ini`. Run `pytest tests/` + `compute_metrics()` on a fixture CRC.
+- [Backlog #12] Add `pytest.ini`. (GitHub Actions CI deliberately out of scope for this phase — local `pytest` only.)
 
 ### Sprint 5 — Skills, Context, Domain packs
 - [Backlog #6] E-012 Enhanced SkillLoader 3-stage progressive disclosure.
